@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>2FA Helper · 界面预览</title>
+<style>
+  :root {
+    --bg: #f0f3f4;
+    --card: #fff;
+    --fg: #16202a;
+    --muted: #6b7a88;
+    --border: #e3e9ed;
+    --accent: #10806a;
+    --accent-soft: #e6f4f0;
+    --danger: #b4341f;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 34px 26px 70px;
+    background: radial-gradient(1200px 500px at 20% -10%, #e3f1ee 0%, var(--bg) 55%);
+    color: var(--fg);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .page { max-width: 1080px; margin: 0 auto; }
+  .page > header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .page > header h1 { font-size: 22px; margin: 0; letter-spacing: .3px; }
+  .page > header span { font-size: 12.5px; color: var(--muted); }
+  .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 28px; max-width: 720px; }
+
+  .stage { display: flex; gap: 34px; align-items: flex-start; flex-wrap: wrap; }
+  figure { margin: 0; }
+  figcaption {
+    font-size: 12px; color: var(--muted); margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+
+  /* ---------- popup frame ---------- */
+  .popup {
+    width: 384px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: 0 18px 50px rgba(20, 40, 50, .13);
+    overflow: hidden;
+  }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 7px; font-weight: 650; font-size: 13.5px; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .toolbar { display: flex; gap: 2px; }
+  .icon-btn { border: 0; background: transparent; color: var(--fg); width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; }
+  .icon-btn:hover { background: #eef2f3; }
+  .searchbar { padding: 8px 12px; }
+  .searchbar input { width: 100%; border: 1px solid var(--border); background: #f5f7f8; border-radius: 9px; padding: 7px 10px; font-size: 12.5px; color: var(--fg); }
+  .list { list-style: none; margin: 0; padding: 0 8px 8px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 10px; position: relative; }
+  .row:hover { background: #eef2f3; }
+  .avatar { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .meta { min-width: 0; flex: 1; }
+  .meta .issuer { font-weight: 600; font-size: 13px; }
+  .meta .account { color: var(--muted); font-size: 11.5px; }
+  .code-wrap { display: flex; align-items: center; gap: 8px; }
+  .code { font-family: var(--mono); font-size: 16px; letter-spacing: 1.5px; font-weight: 600; color: var(--accent); min-width: 92px; text-align: right; }
+  .code.urgent { color: var(--danger); }
+  .ring { width: 20px; height: 20px; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 3; }
+  .ring .b { stroke: var(--border); }
+  .ring .f { stroke: var(--accent); stroke-linecap: round; }
+  .ring.urgent .f { stroke: var(--danger); }
+  .pk-badge {
+    font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 3px 7px;
+  }
+  .statusbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--border); background: #f5f7f8; font-size: 11.5px; color: var(--muted); }
+  .link { border: 0; background: none; color: var(--accent); font-size: 12px; padding: 4px; }
+
+  /* ---------- options ---------- */
+  .options { flex: 1; min-width: 380px; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px 18px; box-shadow: 0 6px 24px rgba(20,40,50,.06); }
+  .card-head { display: flex; align-items: center; gap: 10px; }
+  .card-head h2 { font-size: 15px; margin: 0; }
+  .badge { font-size: 11px; padding: 2px 9px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); }
+  .badge.off { background: #f5f7f8; color: var(--muted); border: 1px solid var(--border); }
+  .desc { color: var(--muted); font-size: 12.5px; margin: 6px 0 12px; }
+  .field-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  .field-row label { flex: 1 1 150px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 5px; }
+  .field-row input { border: 1px solid var(--border); background: #f7f9fa; border-radius: 9px; padding: 8px 10px; font-size: 13px; color: var(--fg); }
+  .btn { border: 1px solid var(--border); background: #fff; color: var(--fg); font-size: 13px; font-weight: 550; padding: 8px 14px; border-radius: 9px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { background: transparent; }
+  .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 10px; }
+  .tab { border: 1px solid var(--border); background: #f7f9fa; color: var(--muted); padding: 7px 13px; border-radius: 20px; font-size: 12.5px; }
+  .tab.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .pin { font-size: 10px; opacity: .8; }
+  .cost { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #e2f2ee; color: #0f766e; margin-left: 6px; }
+  .cost.oauth { background: #f5f7f8; color: #6b7683; border: 1px solid var(--border); }
+  .cost-hint { font-size: 12.5px; color: #0f766e; background: #e2f2ee; border-radius: 9px; padding: 10px 12px; margin: 4px 0 2px; }
+  .field-row select { border: 1px solid var(--border); background: #f7f9fa; border-radius: 9px; padding: 8px 10px; font-size: 13px; color: var(--fg); }
+  .sub-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-top: 14px; background: #fcfdfd; }
+  .sub-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+  .sub-head .cost { margin-left: 0; }
+  .help { font-size: 12.5px; color: var(--muted); background: #f7f9fa; border-radius: 9px; padding: 10px 12px; margin: 6px 0 12px; }
+  .switch-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+  .switch-row:first-of-type { border-top: 0; }
+  .switch { position: relative; width: 40px; height: 23px; flex: 0 0 40px; }
+  .switch span { position: absolute; inset: 0; border-radius: 20px; background: var(--border); }
+  .switch.on span { background: var(--accent); }
+  .switch span::after { content: ''; position: absolute; width: 17px; height: 17px; border-radius: 50%; background: #fff; top: 3px; left: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .switch.on span::after { transform: translateX(17px); }
+  .switch-title { font-size: 13px; font-weight: 550; }
+  .inline { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 5px; }
+
+  /* ---------- autofill mock ---------- */
+  .site { margin-top: 44px; background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 22px; box-shadow: 0 14px 40px rgba(20,40,50,.10); max-width: 520px; }
+  .site h3 { margin: 0 0 4px; font-size: 15px; }
+  .site p { margin: 0 0 16px; color: var(--muted); font-size: 12.5px; }
+  .fake-field { position: relative; }
+  .fake-field input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; font-size: 14px; letter-spacing: 3px; font-family: var(--mono); }
+  .chip { position: absolute; left: 0; bottom: -42px; display: inline-flex; align-items: center; gap: 7px; background: #12211d; color: #eaf6f2; border: 1px solid #2c4a42; border-radius: 9px; padding: 6px 10px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.28); }
+  .chip .k { font-family: var(--mono); font-weight: 600; color: #6fe0bd; }
+  .chip .t { opacity: .82; }
+  .sync-pair { display: flex; gap: 16px; align-items: flex-start; background: #f7f9fa; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 10px 0 4px; flex-wrap: wrap; }
+  .sync-pair img { border-radius: 10px; background: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.10); image-rendering: pixelated; }
+  .sync-meta { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 6px; }
+  .key-code { font-family: var(--mono); font-size: 11.5px; letter-spacing: .03em; word-break: break-all; color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; }
+  .btn.danger { color: #b4341f; border-color: #b4341f; }
+  .scan-zone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 22px 16px; text-align: center; color: var(--muted); font-size: 13px; background: #f7f9fa; }
+  .scan-zone .scan-icon { font-size: 26px; margin-bottom: 8px; opacity: .5; }
+  .scan-zone .link { color: var(--accent); text-decoration: underline; }
+  .foot { margin-top: 60px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>2FA Helper</h1>
+    <span>v1.2.0 · Manifest V3 · Firefox / Edge / Chromium</span>
+  </header>
+  <p class="lead">
+    下面是扩展真实界面的静态预览（演示数据，非真实密钥）。左侧是点击图标弹出的主面板，右侧是设置页的加密与备份部分。
+    安装后所有数据都在本地生成，验证码在本地计算。备份渠道里有 <strong>3 条「免注册」通道</strong> —— 填账号密码就能用，不用去任何平台注册开发者应用。
+  </p>
+
+  <div class="stage">
+    <!-- ============ popup ============ -->
+    <figure>
+      <figcaption>主面板 · 384px</figcaption>
+      <div class="popup">
+        <div class="topbar">
+          <div class="brand"><span class="dot"></span>2FA Helper</div>
+          <div class="toolbar">
+            <span class="icon-btn">＋</span>
+            <span class="icon-btn">🔒</span>
+            <span class="icon-btn">⚙</span>
+          </div>
+        </div>
+        <div class="searchbar"><input placeholder="搜索站点或账户…" /></div>
+        <ul class="list">
+          <li class="row">
+            <div class="avatar" style="color:#0f766e;background:#e2f2ee">G</div>
+            <div class="meta"><div class="issuer">GitHub</div><div class="account">me@example.com</div></div>
+            <div class="code-wrap">
+              <div class="code">482 913</div>
+              <svg class="ring" viewBox="0 0 20 20"><circle class="b" cx="10" cy="10" r="8"/><circle class="f" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="12.6"/></svg>
+            </div>
+          </li>
+          <li class="row">
+            <div class="avatar" style="color:#7c3aed;background:#f0e9fe">C</div>
+            <div class="meta"><div class="issuer">Cloudflare</div><div class="account">ops@acme.io</div></div>
+            <div class="code-wrap">
+              <div class="code">170 664</div>
+              <svg class="ring" viewBox="0 0 20 20"><circle class="b" cx="10" cy="10" r="8"/><circle class="f" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="22.6"/></svg>
+            </div>
+          </li>
+          <li class="row">
+            <div class="avatar" style="color:#b45309;background:#fdf1e3">A</div>
+            <div class="meta"><div class="issuer">AWS · 生产环境</div><div class="account">root@acme.io</div></div>
+            <div class="code-wrap">
+              <div class="code urgent">905 218</div>
+              <svg class="ring urgent" viewBox="0 0 20 20"><circle class="b" cx="10" cy="10" r="8"/><circle class="f" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="42.7"/></svg>
+            </div>
+          </li>
+          <li class="row">
+            <div class="avatar" style="color:#1d4ed8;background:#e6edfd">N</div>
+            <div class="meta"><div class="issuer">Nextcloud</div><div class="account">admin@nas.local</div></div>
+            <div class="code-wrap">
+              <div class="code">331 074</div>
+              <svg class="ring" viewBox="0 0 20 20"><circle class="b" cx="10" cy="10" r="8"/><circle class="f" cx="10" cy="10" r="8" stroke-dasharray="50.27" stroke-dashoffset="30"/></svg>
+            </div>
+          </li>
+          <li class="row">
+            <div class="avatar" style="color:#7c3aed;background:#f0e9fe">G</div>
+            <div class="meta"><div class="issuer">GitLab</div><div class="account">me@example.com</div></div>
+            <div class="code-wrap"><span class="pk-badge">PASSKEY</span></div>
+          </li>
+        </ul>
+        <div class="statusbar">
+          <span>文件夹同步 8 分钟前 ✓ · 本地保存 刚刚</span>
+          <button class="link">立即备份</button>
+        </div>
+      </div>
+    </figure>
+
+    <!-- ============ options ============ -->
+    <figure class="options">
+      <figcaption>设置页 · 加密与备份</figcaption>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>主密码与加密</h2>
+          <span class="badge">已加密（AES-256-GCM）</span>
+        </div>
+        <p class="desc">本地存储与所有备份文件都是密文，密钥由主密码经 PBKDF2 派生。<strong>忘记主密码无法找回。</strong></p>
+        <div class="field-row">
+          <label>当前主密码<input type="password" value="············" /></label>
+          <label>新主密码<input placeholder="留空则只做其他改动" /></label>
+          <button class="btn">更新主密码</button>
+          <button class="btn ghost">关闭加密</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>备份渠道</h2>
+          <span class="badge off">默认：不启用（只做手动备份）</span>
+        </div>
+        <p class="desc">所有渠道上传的是同一个加密文件，可同时配置多个。带绿色「免注册」的四条通道填账号密码就能用，不需要在任何平台创建开发者应用。</p>
+        <div class="cost-hint">不想注册开发者应用？用<strong>文件夹同步</strong>（零配置）、<strong>对象存储</strong>（一对密钥）或 <strong>WebDAV</strong>（账号 + 应用密码）。</div>
+        <div class="tabs">
+          <span class="tab active">不启用</span>
+          <span class="tab">文件夹同步 <span class="cost">免注册</span> <span class="pin">推荐</span></span>
+          <span class="tab">对象存储 <span class="cost">免注册</span></span>
+          <span class="tab">WebDAV <span class="cost">免注册</span></span>
+          <span class="tab">Google Drive <span class="cost oauth">需注册</span></span>
+          <span class="tab">Dropbox <span class="cost oauth">需注册</span></span>
+          <span class="tab">OneDrive <span class="cost oauth">需注册</span></span>
+        </div>
+
+        <div class="sub-card">
+          <div class="sub-head">文件夹同步 <span class="cost">免注册</span></div>
+          <p class="desc" style="margin:0 0 10px">备份直接写入下载目录，由系统里的 OneDrive / iCloud / 坚果云客户端同步走。同名覆盖，不弹保存框。</p>
+          <div class="field-row">
+            <label style="flex-basis:100%">子路径<input value="2FA-Helper/2fa-helper-backup.json" /></label>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary">设为默认渠道</button>
+            <button class="btn">测试连接</button>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <div class="sub-head">对象存储（S3 兼容） <span class="cost">免注册</span></div>
+          <div class="field-row">
+            <label>服务商预设
+              <select><option>AWS S3</option><option>Cloudflare R2</option><option>Backblaze B2</option><option>MinIO / 自建</option><option>阿里云 OSS</option><option>腾讯云 COS</option></select>
+            </label>
+            <label>Endpoint<input value="https://s3.us-east-1.amazonaws.com" /></label>
+            <label>Region<input value="us-east-1" /></label>
+            <label>Bucket<input value="my-2fa-backups" /></label>
+            <label>AccessKey<input value="AKIA…" /></label>
+            <label>SecretKey<input type="password" placeholder="已保存（留空则保持不变）" /></label>
+          </div>
+          <div class="help" style="margin-bottom:0">用 WebCrypto 现签 SigV4 预签名 URL，无需 SDK；记得给桶开 CORS（GET / PUT / HEAD）。</div>
+        </div>
+
+        <div class="sub-card">
+          <div class="sub-head">WebDAV 网盘 <span class="cost">免注册</span></div>
+          <div class="field-row">
+            <label>服务商预设
+              <select><option>坚果云</option><option>Nextcloud</option><option>群晖 NAS</option><option>AList / OpenList 网关</option><option>pCloud</option><option>Koofr</option><option>Yandex Disk</option><option>InfiniCLOUD</option><option>自定义</option></select>
+            </label>
+            <label style="flex-basis:100%">WebDAV 地址<input value="https://dav.jianguoyun.com/dav/2fa-helper/backup.json" /></label>
+            <label>用户名 / 邮箱<input value="me@example.com" /></label>
+            <label>应用密码<input type="password" placeholder="已保存（留空则保持不变）" /></label>
+          </div>
+          <div class="help" style="margin-bottom:0">选预设即自动填地址。想接百度网盘 / 阿里云盘这类没有 WebDAV 的网盘，用 AList 的 <code>/dav</code> 网关挂载即可。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>自动备份与本地保存</h2></div>
+        <div class="switch-row">
+          <div class="switch on"><span></span></div>
+          <div><div class="switch-title">定时上传到云端</div><div class="muted">浏览器后台按周期自动上传最新保管库</div></div>
+          <span class="inline">每 12 小时</span>
+        </div>
+        <div class="switch-row">
+          <div class="switch on"><span></span></div>
+          <div><div class="switch-title">自动快照（保存在扩展本地）</div><div class="muted">改动后 10 秒 + 每 6 小时，滚动保留</div></div>
+          <span class="inline">保留 10 份</span>
+        </div>
+        <div class="switch-row">
+          <div class="switch"><span></span></div>
+          <div><div class="switch-title">定期导出文件到下载目录</div><div class="muted">脚本之外的副本，卸载扩展也还在</div></div>
+          <span class="inline">每 7 天</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary">立即备份</button>
+          <button class="btn">从云端恢复…</button>
+          <button class="btn ghost">导出备份文件</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>端到端加密同步</h2>
+          <span class="badge">已启用</span>
+        </div>
+        <p class="desc">内容用只存在于你设备上的 256 位同步密钥加密后写入 <code>storage.sync</code>，浏览器服务商只能看到密文。</p>
+        <div class="sync-pair">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAN4AAADeAQAAAAB6HIMaAAAB+UlEQVR4nO2YMW7cQAxF3ywFbDkL5AA+CnUDHylXGwG+iA8QgCoNcPFTzKyr2EkTmIWnkSA2D9Qf8pNNfHjul49j8B38WxAFgAV0KdyC7DPfnhVpXZKFg9OHwsFNUhSlnXjZh4VbIMkCq0i7ref5/PLr+e1HtCc1/AuB/inYx9sNe20WR/ZRAOiPZwMEG1x1NPwF53Wni7Mg7QWO1hrnzvnTAs59g3tr7VaQFs0TAAl0JT6/1btlF8693Y72NLJrw/W6W7Bx3NteMbfBLLOmIQ3TMMkkesHcovDsMg0FiZsGfSgo2sskC1d44gkzyfRRUrcoyD7s0XwTwC08aypBIyG7EkzLJ6wvFWk1//7MMLg0pFH0lmmYlF3Zp1zHfCnpapDGcowPf/tuIMvSSiNxurKP7ALPorSy8PciZuHZx5JHQdpwcIWzIAdds1NUpNVImKPN7Gtao1lJ2iCXekfiCuaNq1oT1kbhkVKmYyyphAscCYnfbwAKtunPvw7okzO1yhp4/X2ZUHRCX7PDKmKwSkTVCgZggU0Bd8Ha2NSjvYDPi3ZvO31w7hYkXKOgbi9Aa/ucF/LcLXi7He3mVecyn/Z7tbDpvnpNx/jYLHHk1oBrcr9xTSyKKmF6761LEmfLPu5tz7OmEgCmrZVEHyYpKDlFtu9N/n8L/gbIL7pbh5sGNgAAAABJRU5ErkJggg==" alt="配对二维码" width="132" height="132" />
+          <div class="sync-meta">
+            <div class="switch-title">配对码（新设备需要它才能解密）</div>
+            <div class="key-code">A1B2-C3D4-E5F6-G7H2-J3K4-L5M6-N7P2-Q3R4-S5T6-U7V2-W3X4-Y5Z6-2A3B</div>
+            <div class="muted">旧设备点「显示二维码」，新设备设置页扫码即可加入。</div>
+          </div>
+        </div>
+        <div class="switch-row">
+          <div class="switch on"><span></span></div>
+          <div><div class="switch-title">改动后自动推送</div><div class="muted">变化后 10 秒 + 每 60 分钟兜底</div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary">立即推送</button>
+          <button class="btn">从云端拉取</button>
+          <button class="btn danger">停止同步</button>
+        </div>
+        <div class="muted" style="margin-top:10px">云端：2026-11-18 09:42 · 43 条 · 推送于 3 分钟前<br>本机上次推送：3 分钟前</div>
+      </div>
+    </figure>
+  </div>
+
+  <div class="site">
+    <h3>登录页自动填充</h3>
+    <p>焦点落在验证码输入框时，只有域名匹配的账户才会弹出这个提示；网页拿不到密钥，只能拿到 6 位码。</p>
+    <div class="fake-field">
+      <input value="" placeholder="000000" />
+      <span class="chip"><span class="k">2FA</span><span class="t">填充 GitHub</span></span>
+    </div>
+  </div>
+
+  <div class="site" style="max-width:100%;">
+    <h3>二维码扫码导入</h3>
+    <p>拖入截图、按 Ctrl+V 粘贴，或用摄像头对准。识别 <code>otpauth://</code>、迁移包、Passkey 记录码、同步配对码与备份文件。</p>
+    <div class="scan-zone">
+      <div class="scan-icon">▣</div>
+      <div><strong>拖放图片到此处</strong>，或 <span class="link">点击选择文件</span></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn">使用摄像头扫码</button>
+      <span class="muted">已导入 1 条验证码账户</span>
+    </div>
+  </div>
+
+  <p class="foot">预览仅供查看设计（配对码与二维码为演示数据），实际界面会跟随系统深色模式自动切换主题。</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,39 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装依赖（只有一个 dev 依赖 jsdom）
+        run: npm ci
+
+      - name: 单元测试（82 项：算法 / 加密 / 保管库 / 渠道 / 同步 / 二维码 / S3）
+        run: npm test
+
+      - name: UI 端到端测试（jsdom 里跑真背景脚本与真页面）
+        run: npm run test:ui
+
+      - name: 打包三个目标
+        run: npm run build
+
+      - name: web-ext lint
+        run: npx --yes web-ext@8.3.0 lint --source-dir release/firefox
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 2fa-helper-extension
+          path: release/*.zip
+          if-no-files-found: error

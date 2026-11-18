@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2FA Helper</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- ============ 解锁 ============ -->
+  <section id="lockView" class="view" hidden>
+    <div class="lock-wrap">
+      <div class="lock-badge">🔒</div>
+      <h1>保管库已锁定</h1>
+      <p class="muted">输入主密码以解锁验证码</p>
+      <form id="unlockForm">
+        <input id="unlockPassword" type="password" placeholder="主密码" autocomplete="current-password" autofocus />
+        <button type="submit" class="primary" id="unlockBtn">解锁</button>
+      </form>
+      <p class="err" id="lockErr"></p>
+      <button class="link" id="toOptionsFromLock">打开设置</button>
+    </div>
+  </section>
+
+  <!-- ============ 列表 ============ -->
+  <section id="mainView" class="view" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="dot"></span>2FA Helper</div>
+      <div class="toolbar">
+        <button id="addBtn" class="icon-btn" title="添加账户 / Passkey">＋</button>
+        <button id="lockBtn" class="icon-btn" title="锁定">🔒</button>
+        <button id="settingsBtn" class="icon-btn" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <div class="searchbar">
+      <input id="search" type="search" placeholder="搜索站点或账户…" autocomplete="off" />
+    </div>
+
+    <ul id="list" class="list"></ul>
+    <div id="emptyState" class="empty" hidden>
+      <p class="muted">还没有任何账户</p>
+      <button class="primary" id="emptyAdd">添加第一个 2FA</button>
+    </div>
+
+    <footer class="statusbar">
+      <span id="statusText" class="muted">—</span>
+      <button id="backupQuick" class="link">立即备份</button>
+    </footer>
+  </section>
+
+  <!-- ============ 新增/编辑 ============ -->
+  <section id="formView" class="view" hidden>
+    <header class="topbar">
+      <button class="icon-btn" id="formBack" title="返回">←</button>
+      <div class="brand" id="formTitle">添加账户</div>
+      <span></span>
+    </header>
+
+    <div class="seg" id="kindSwitch">
+      <button type="button" data-kind="otp" class="active">验证码</button>
+      <button type="button" data-kind="passkey">Passkey</button>
+    </div>
+
+    <form id="entryForm" class="form">
+      <div id="otpFields">
+        <label>网站 / 服务名称
+          <input id="fIssuer" placeholder="例如 GitHub" />
+        </label>
+        <label>账户
+          <input id="fAccount" placeholder="me@example.com" />
+        </label>
+        <label>密钥（Base32）
+          <input id="fSecret" placeholder="JBSWY3DPEHPK3PXP" autocomplete="off" spellcheck="false" />
+        </label>
+        <label>自动填充域名（可选，逗号分隔）
+          <input id="fUrls" placeholder="github.com" />
+        </label>
+        <details id="advanced">
+          <summary>高级选项</summary>
+          <div class="grid3">
+            <label>类型
+              <select id="fType"><option value="totp">TOTP</option><option value="hotp">HOTP</option></select>
+            </label>
+            <label>位数
+              <select id="fDigits"><option>6</option><option>7</option><option>8</option></select>
+            </label>
+            <label>算法
+              <select id="fAlgorithm"><option>SHA1</option><option>SHA256</option><option>SHA512</option></select>
+            </label>
+          </div>
+          <div class="grid2">
+            <label>周期（秒）<input id="fPeriod" type="number" min="10" max="300" value="30" /></label>
+            <label>计数器（HOTP）<input id="fCounter" type="number" min="0" value="0" /></label>
+          </div>
+        </details>
+      </div>
+
+      <div id="passkeyFields" hidden>
+        <div class="notice">
+          Passkey 在这里是<strong>加密存放与迁移</strong>，不会替网站完成登录——浏览器没有向扩展开放 WebAuthn 认证接口。
+        </div>
+        <label>依赖方 ID（RP ID）
+          <input id="pRpId" placeholder="github.com" autocomplete="off" spellcheck="false" />
+        </label>
+        <label>显示名称
+          <input id="pRpName" placeholder="GitHub" />
+        </label>
+        <label>用户名
+          <input id="pUserName" placeholder="me@example.com" />
+        </label>
+        <label>用户句柄 userHandle（可选，base64url）
+          <input id="pUserHandle" placeholder="留空自动生成" autocomplete="off" />
+        </label>
+        <label>凭据 ID credentialId（base64url）
+          <input id="pCredentialId" placeholder="留空自动生成" autocomplete="off" spellcheck="false" />
+        </label>
+        <label>公钥（可选，base64 SPKI / COSE）
+          <textarea id="pPublicKey" rows="2" placeholder="粘贴凭据公钥"></textarea>
+        </label>
+        <div class="row-actions">
+          <button type="button" class="link" id="genKeypair">生成软件密钥对（P-256）</button>
+        </div>
+        <details id="pkAdvanced">
+          <summary>私钥与备注</summary>
+          <label>私钥 JWK（仅在你自己托管时填写，会随保管库一起加密）
+            <textarea id="pPrivateJwk" rows="3" placeholder='{"kty":"EC",...}'></textarea>
+          </label>
+          <div class="grid2">
+            <label>签名计数 signCount<input id="pSignCount" type="number" min="0" value="0" /></label>
+            <label>备注<input id="pNote" placeholder="可选" /></label>
+          </div>
+        </details>
+      </div>
+
+      <p class="err" id="formErr"></p>
+      <div class="row-actions">
+        <button type="button" class="link danger" id="deleteEntryBtn" hidden>删除此条目</button>
+        <span class="spacer"></span>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ============ 详情 ============ -->
+  <section id="detailView" class="view" hidden>
+    <header class="topbar">
+      <button class="icon-btn" id="detailBack" title="返回">←</button>
+      <div class="brand" id="detailTitle">详情</div>
+      <button class="icon-btn" id="detailEdit" title="编辑">✎</button>
+    </header>
+    <div class="detail-body" id="detailBody"></div>
+  </section>
+
+  <!-- ============ 导入 ============ -->
+  <section id="importView" class="view" hidden>
+    <header class="topbar">
+      <button class="icon-btn" id="importBack" title="返回">←</button>
+      <div class="brand">批量导入</div>
+      <span></span>
+    </header>
+    <div class="form">
+      <p class="muted">支持 <code>otpauth://</code> 单条链接、Google Authenticator 导出的 <code>otpauth-migration://</code>，或 JSON 数组。</p>
+      <textarea id="importText" rows="7" placeholder="otpauth://totp/GitHub:me@example.com?secret=..."></textarea>
+      <div class="row-actions">
+        <span class="spacer"></span>
+        <button class="primary" id="importBtn">解析并导入</button>
+      </div>
+      <p class="err" id="importErr"></p>
+      <p class="hint" id="importResult"></p>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="../vendor/qrcode.js"></script>
+  <script src="../lib/util.js"></script>
+  <script src="../lib/totp.js"></script>
+  <script src="../lib/qr.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
