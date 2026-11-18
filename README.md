@@ -31,7 +31,20 @@ npm run test:ui        # jsdom 里的端到端 UI 测试（真背景脚本 + 真
 npm run test:all       # 全部
 ```
 
-### 安装（未上架商店，用开发者模式加载）
+### 安装
+
+**方式一：直接下载现成安装包**（推荐）
+
+到 [Releases](https://github.com/wudream813/2FA-Helper/releases/latest) 下载对应压缩包并解压：
+
+| 文件 | 用于 |
+| --- | --- |
+| `2fa-helper-chromium-1.2.0.zip` | Chrome / Chromium / Brave / Vivaldi |
+| `2fa-helper-edge-1.2.0.zip` | Edge（与 chromium 包内容相同，同用 MV3 manifest） |
+| `2fa-helper-firefox-1.2.0.zip` | Firefox |
+
+**方式二：自己构建，用开发者模式加载**
+
 
 | 浏览器 | 操作 |
 | --- | --- |
