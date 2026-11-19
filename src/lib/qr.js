@@ -64,6 +64,31 @@
     return result ? result.data : null;
   }
 
+  /** Decode a region of a PNG/JPEG data URL — works in a service worker (no DOM):
+      fetch → createImageBitmap → OffscreenCanvas. rect is in CSS pixels of the
+      original viewport; it gets scaled to the bitmap's device pixels here. */
+  async function decodeDataUrlRegion(dataUrl, rect, viewport) {
+    if (!hasDecoder()) throw new Error('二维码解码器未加载');
+    const blob = await (await fetch(dataUrl)).blob();
+    const bmp = await createImageBitmap(blob);
+    const vw = (viewport && viewport.w) || bmp.width;
+    const vh = (viewport && viewport.h) || bmp.height;
+    const sx = bmp.width / vw;
+    const sy = bmp.height / vh;
+    const x = Math.max(0, Math.round(rect.x * sx));
+    const y = Math.max(0, Math.round(rect.y * sy));
+    const w = Math.max(1, Math.min(bmp.width - x, Math.round(rect.w * sx)));
+    const h = Math.max(1, Math.min(bmp.height - y, Math.round(rect.h * sy)));
+    const canvas = typeof root.OffscreenCanvas === 'function'
+      ? new root.OffscreenCanvas(w, h)
+      : (() => { const c = root.document.createElement('canvas'); c.width = w; c.height = h; return c; })();
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, x, y, w, h, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    if (typeof bmp.close === 'function') bmp.close();
+    return decodeImageData(imageData);
+  }
+
   /** Draw any image source (img/canvas/video) into a canvas and return ImageData. */
   function grabImageData(source, opts = {}) {
     const max = opts.max || 1400;
@@ -102,5 +127,5 @@
     return decodeImageData(grabImageData(img));
   }
 
-  Object.assign(F2A, { qr: { hasEncoder, hasDecoder, toCanvas, decodeImageData, cropImageData, grabImageData, decodeFile, fileToImage } });
+  Object.assign(F2A, { qr: { hasEncoder, hasDecoder, toCanvas, decodeImageData, cropImageData, grabImageData, decodeFile, fileToImage, decodeDataUrlRegion } });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

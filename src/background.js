@@ -3,7 +3,7 @@
 'use strict';
 
 (function (root) {
-  const LIB = ['lib/util.js', 'lib/totp.js', 'lib/crypto.js', 'lib/vault.js', 'lib/providers.js', 'lib/backup.js', 'lib/sync.js'];
+  const LIB = ['lib/util.js', 'lib/totp.js', 'lib/crypto.js', 'lib/vault.js', 'lib/providers.js', 'lib/backup.js', 'lib/sync.js', 'lib/qr.js'];
   // Chromium service worker: pull the classic libs in. Firefox event page: manifest already did it.
   if (typeof importScripts === 'function' && !root.F2A) {
     for (const f of LIB) importScripts(f);
@@ -67,6 +67,25 @@
       return { action: 'import', kind: passkeys.length === entries.length ? 'passkey' : 'otp', entries };
     }
     throw new Error('无法识别的二维码内容（需要 otpauth://、迁移包、本扩展条目码或备份文件）');
+  }
+
+  /* 二维码解码器按需加载：Chromium 的 SW 用 importScripts，Firefox 的
+     background.scripts 已在 manifest 里静态引入，这里检测一下即可。 */
+  let qrShot = null;
+  function ensureDecoder() {
+    if (typeof root.jsQR === 'function') return true;
+    try {
+      if (typeof importScripts === 'function') {
+        importScripts('vendor/jsqr.js');
+        return typeof root.jsQR === 'function';
+      }
+    } catch (e) { /* fall through */ }
+    return typeof root.jsQR === 'function';
+  }
+
+  async function activeTab() {
+    const tabs = await api.tabs.query({ active: true, currentWindow: true });
+    return (tabs && tabs[0]) || null;
   }
 
   /** Capture the visible area of the active tab as a PNG data URL. */
@@ -162,23 +181,40 @@
     /* 截取当前标签页，回传 PNG data URL（调用方自己解码） */
     'qr.capture': async () => ({ dataUrl: await captureVisible() }),
 
-    /* 截取当前标签页 → 暂存 → 打开「框选」窗口，让用户只框住二维码那一块 */
+    /* 截取当前标签页 → 直接在原页面盖一层浮层让用户框选（不开新窗口） */
     'qr.select': async () => {
       const dataUrl = await captureVisible();
+      qrShot = dataUrl;
+      try { await api.storage.session.set({ qrShot: dataUrl }); } catch (e) { /* 可选 */ }
+      const tab = await activeTab();
+      if (!tab || tab.id == null) throw new Error('找不到当前标签页');
       try {
-        await api.storage.session.set({ qrShot: dataUrl });
+        const res = await api.tabs.sendMessage(tab.id, { type: 'overlay.open', shot: dataUrl });
+        if (res && res.ok === false) throw new Error(res.error || '页面拒绝显示浮层');
       } catch (e) {
-        // 极老的浏览器没有 storage.session：退回 local（用完即删）
-        await api.storage.local.set({ qrShot: dataUrl });
+        qrShot = null;
+        throw new Error('这个页面不能框选（浏览器内部页面或未注入脚本），请改用截图粘贴');
       }
-      const target = api.runtime.getURL('selector/selector.html');
-      let opened = null;
-      if (api.windows && typeof api.windows.create === 'function') {
-        opened = await api.windows.create({ url: target, type: 'popup', width: 1100, height: 820 });
-      } else {
-        opened = await api.tabs.create({ url: target });
+      return { tabId: tab.id };
+    },
+
+    /* 浮层框选完成 → 只解码这一块 */
+    'overlay.crop': async ({ rect, viewport }) => {
+      if (!qrShot) {
+        try { const st = await api.storage.session.get('qrShot'); qrShot = st && st.qrShot; } catch (e) { /* ignore */ }
       }
-      return { windowId: (opened && opened.id) || null };
+      if (!qrShot) throw new Error('截图已失效，请重新点 ▣');
+      if (!ensureDecoder()) throw new Error('二维码解码器未加载');
+      const text = await F2A.qr.decodeDataUrlRegion(qrShot, rect, viewport);
+      if (!text) return { noQr: true };
+      const parsed = parseScanned(text);
+      if (parsed.action === 'sync-join') return { needsOptions: '这是同步配对码，请到设置页「端到端同步」中导入。' };
+      if (parsed.action === 'restore') return { needsOptions: '这是加密备份文件，请到设置页的扫码导入里恢复。' };
+      const imported = await F2A.vault.importEntries(parsed.entries, { mode: 'merge' });
+      await updateBadge();
+      const res = { total: imported.total };
+      qrShot = null;
+      return { imported: parsed.entries.length, total: res.total, label: parsed.entries[0] && (parsed.entries[0].issuer || parsed.entries[0].account) || '' };
     },
 
     /* ---- Passkey ---- */

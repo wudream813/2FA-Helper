@@ -35,6 +35,7 @@ function storageArea(map) {
 const bgListener = { fn: null };
 const createdTabs = [];
 const createdWindows = [];
+const contentListeners = [];
 
 function makeChrome(opts = {}) {
   return {
@@ -42,7 +43,7 @@ function makeChrome(opts = {}) {
       id: 'test-extension-id',
       getManifest: () => ({ version: '1.0.0' }),
       getURL: (p) => 'chrome-extension://test-extension-id/' + p,
-      onMessage: { addListener: (fn) => { if (opts.background) bgListener.fn = fn; } },
+      onMessage: { addListener: (fn) => { if (opts.background) bgListener.fn = fn; else if (opts.content) contentListeners.push(fn); } },
       onInstalled: { addListener() {} },
       onStartup: { addListener() {} },
       openOptionsPage() {},
@@ -76,6 +77,14 @@ function makeChrome(opts = {}) {
       // 真实实现会截当前标签页；测试里返回一个合法 PNG data URL 前缀即可，
       // 真正的像素解码在下面被 stub 掉（jsdom 没有 canvas）。
       async captureVisibleTab() { return 'data:image/png;base64,iVBORw0KGgo='; },
+      async query() { return [{ id: 7, active: true }]; },
+      async sendMessage(tabId, msg) {
+        for (const fn of contentListeners) {
+          const res = await new Promise((resolve) => { fn(msg, {}, resolve); });
+          if (res) return res;
+        }
+        throw new Error('Could not establish connection. Receiving end does not exist.');
+      },
       async create(opts) { createdTabs.push(opts); return { id: createdTabs.length }; },
     },
     windows: {
@@ -88,7 +97,7 @@ const vc = new VirtualConsole();
 const domErrors = [];
 vc.on('jsdomError', (e) => domErrors.push(String(e.message)));
 
-function boot({ html, scripts, background = false }) {
+function boot({ html, scripts, background = false, content = false }) {
   const file = html ? path.join(SRC, html) : null;
   const dom = new JSDOM(file ? readFileSync(file, 'utf8') : '<!DOCTYPE html><html><body></body></html>', {
     url: 'chrome-extension://test-extension-id/popup/popup.html',
@@ -101,7 +110,7 @@ function boot({ html, scripts, background = false }) {
     Object.defineProperty(win, 'crypto', { value: webcrypto, configurable: true });
   }
   if (!win.crypto || !win.crypto.subtle) Object.defineProperty(win, 'crypto', { value: webcrypto, configurable: true });
-  win.chrome = makeChrome({ background });
+  win.chrome = makeChrome({ background, content });
   win.browser = undefined;
   win.navigator.clipboard = { async writeText() { return true; } };
   win.confirm = () => true;
@@ -122,7 +131,7 @@ const call = (msg) => new Promise((res) => bgListener.fn(msg, {}, res));
 
 const bg = boot({
   background: true,
-  scripts: ['lib/util.js', 'lib/totp.js', 'lib/crypto.js', 'lib/vault.js', 'lib/providers.js', 'lib/backup.js', 'lib/sync.js', 'background.js'],
+  scripts: ['vendor/jsqr.js', 'lib/util.js', 'lib/totp.js', 'lib/crypto.js', 'lib/vault.js', 'lib/providers.js', 'lib/backup.js', 'lib/sync.js', 'lib/qr.js', 'background.js'],
 });
 assert.ok(bgListener.fn, 'background 应注册 onMessage 监听器');
 await tick(100);
@@ -327,75 +336,81 @@ console.log('✓ 自动填充：后台只回传验证码，不暴露密钥');
   console.log('✓ 免注册：WebDAV 预设一键填充、对象存储面板字段齐全');
 }
 
-/* ---------------- 扫描当前网页（框选） ---------------- */
+/* ---------------- 扫描当前网页（页面内浮层框选） ---------------- */
 {
   const before = (await call({ type: 'vault.state' }, {})).data.entries.length;
   let captured = 0;
   bg.win.chrome.tabs.captureVisibleTab = async () => { captured++; return 'data:image/png;base64,iVBORw0KGgo='; };
 
+  // 一个「网页」上下文，注入真实的 content/overlay.js
+  const { win: page } = boot({ scripts: ['content/overlay.js'], content: true });
+  page.innerWidth = 1024;
+  page.innerHeight = 768;
+  let popupClosed = 0;
+  popup.close = () => { popupClosed++; };   // jsdom 的 close() 会真的把 window 弄坏
+  assert.equal(contentListeners.length, 1, '浮层内容脚本应注册消息监听器');
+
+  let decodedRect = null, viewport = null;
+  bg.win.F2A.qr.decodeDataUrlRegion = async (shot, rect, vp) => {
+    decodedRect = rect; viewport = vp;
+    return 'otpauth://totp/FromOverlay:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=FromOverlay';
+  };
+
   popup.document.getElementById('scanPageBtn').click();
   await tick(300);
-  assert.equal(captured, 1, '应调用一次 captureVisibleTab');
-  assert.ok(storeSession.get('qrShot'), '截图应暂存到 storage.session 供框选窗口读取');
-  assert.equal(createdWindows.length, 1, '应打开一个框选小窗口');
-  assert.match(createdWindows[0].url, /selector\/selector\.html$/, '打开的应是 selector.html');
-  assert.equal(createdWindows[0].type, 'popup', '框选界面应是独立小窗口');
+  assert.equal(captured, 1, '应截一次当前页面的可见区域');
+  const host = page.document.getElementById('__f2a_overlay_host__');
+  assert.ok(host, '应直接在原页面盖一层浮层（而不是新窗口）');
+  assert.equal(createdWindows.length, 0, '不应打开任何新窗口');
+  assert.equal(popupClosed, 1, '浮层出现后弹窗应自己关掉，把页面让出来');
 
-  // ---- 框选窗口本身 ----
-  const { win: sel } = boot({
-    html: 'selector/selector.html',
-    scripts: ['vendor/jsqr.js', 'lib/util.js', 'lib/qr.js', 'selector/selector.js'],
-  });
-  // jsdom 不会真的解码 data URL / 没有 canvas：桩掉像素层，验证坐标与导入链路
-  const RealImage = sel.Image;
-  sel.Image = class {
-    constructor() { this.onload = null; this.onerror = null; this.naturalWidth = 1280; this.naturalHeight = 800; }
-    set src(v) { this._src = v; setTimeout(() => this.onload && this.onload(), 0); }
-    get src() { return this._src; }
-  };
-  await tick(150);
-  const shot = sel.document.getElementById('shot');
-  shot.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 800, right: 1280, bottom: 800 });
-
-  let cropRect = null;
-  sel.F2A.qr.cropImageData = (img, rect) => { cropRect = rect; return { data: new Uint8ClampedArray(4), width: 1, height: 1 }; };
-  sel.F2A.qr.decodeImageData = () => 'otpauth://totp/Picked%20From%20Page:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Picked%20From%20Page';
-
-  // 1) 太小的框不触发识别（防误触）
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerdown', { clientX: 10, clientY: 10, bubbles: true }));
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerup', { clientX: 13, clientY: 13, bubbles: true }));
-  await tick(200);
-  assert.equal(cropRect, null, '过小的选区应被忽略');
-
-  // 2) 选区里没有二维码 → 可读提示，而不是静默失败
-  sel.F2A.qr.decodeImageData = () => null;
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }));
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerup', { clientX: 300, clientY: 300, bubbles: true }));
-  await tick(300);
-  assert.match(sel.document.getElementById('err').textContent, /没有识别到二维码/);
-  assert.equal(cropRect && cropRect.w, 200, '这次也应该真的裁剪了 200×200 的区域');
-
-  // 3) 方向随便拖（从右下往左上）→ 归一化成正矩形 → 只解码这一块 → 导入
-  sel.F2A.qr.decodeImageData = () => 'otpauth://totp/Picked%20From%20Page:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Picked%20From%20Page';
-  cropRect = null;
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerdown', { clientX: 500, clientY: 400, bubbles: true }));
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointermove', { clientX: 260, clientY: 180, bubbles: true }));
-  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerup', { clientX: 260, clientY: 180, bubbles: true }));
+  // 反向拖动：从 (600,500) 拖到 (320,260)
+  const fire = (type, x, y) => host.dispatchEvent(new page.MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+  fire('mousedown', 600, 500);
+  fire('mousemove', 320, 260);
+  fire('mouseup', 320, 260);
   await tick(400);
 
-  // 跨 realm 的对象不能用 deepEqual 比结构，转成 JSON 字符串
-  assert.equal(JSON.stringify(cropRect), JSON.stringify({ x: 260, y: 180, w: 240, h: 220 }),
-    '框选区域应换算成截图里的像素矩形');
+  assert.equal(JSON.stringify(decodedRect), JSON.stringify({ x: 320, y: 260, w: 280, h: 240 }),
+    '应把框选区域换算成视口坐标（反向拖动也归一化）');
+  assert.equal(JSON.stringify(viewport), JSON.stringify({ w: 1024, h: 768 }), '应带上视口尺寸，用于换算设备像素');
   const after = (await call({ type: 'vault.state' }, {})).data.entries;
   assert.equal(after.length, before + 1, '框选识别出的 otpauth 应被导入');
-  assert.ok(after.some((e) => e.issuer === 'Picked From Page'), '导入的条目应来自框选区域');
-  assert.match(sel.document.getElementById('result').textContent, /已导入 1 条/);
+  assert.ok(after.some((e) => e.issuer === 'FromOverlay'), '导入的条目应来自浮层框选');
+  assert.match(host.textContent, /已导入 1 条/, '浮层上应显示导入结果');
 
-  assert.equal(JSON.stringify(sel.__selector.normalizeRect({ x: 300, y: 200 }, { x: 100, y: 400 })),
-    JSON.stringify({ x: 100, y: 200, w: 200, h: 200 }), '反向拖动应被归一化为正矩形');
+  await tick(1400);
+  assert.equal(page.document.getElementById('__f2a_overlay_host__'), null, '成功后浮层应自动撤掉');
 
-  sel.Image = RealImage;
-  console.log('✓ 网页扫码：截图暂存 → 打开框选窗口 → 只解码框住的区域 → 导入成功；过小选区与空选区都有处理');
+  // 框里面没有二维码：提示后浮层保留，可以再框一次
+  bg.win.F2A.qr.decodeDataUrlRegion = async () => null;
+  popup.document.getElementById('scanPageBtn').disabled = false;  // 真机上弹窗已关闭，这里手动复位
+  popup.document.getElementById('scanPageBtn').click();
+  await tick(300);
+  const host2 = page.document.getElementById('__f2a_overlay_host__');
+  const fire2 = (type, x, y) => host2.dispatchEvent(new page.MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+  fire2('mousedown', 100, 100);
+  fire2('mouseup', 400, 400);
+  await tick(400);
+  assert.match(host2.textContent, /没有二维码/, '应提示这块区域没有二维码');
+  assert.ok(page.document.getElementById('__f2a_overlay_host__'), '失败时浮层应保留，允许重试');
+
+  // 太小的框直接忽略（防误触）
+  let called = 0;
+  bg.win.F2A.qr.decodeDataUrlRegion = async () => { called++; return null; };
+  fire2('mousedown', 50, 50);
+  fire2('mouseup', 53, 53);
+  await tick(200);
+  assert.equal(called, 0, '过小的框不应触发解码');
+
+  // Esc 取消
+  page.dispatchEvent(new page.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await tick(100);
+  assert.equal(page.document.getElementById('__f2a_overlay_host__'), null, 'Esc 应撤掉浮层');
+
+  assert.equal(JSON.stringify(page.__f2aOverlay.normalize({ x: 300, y: 200 }, { x: 100, y: 400 })),
+    JSON.stringify({ x: 100, y: 200, w: 200, h: 200 }), 'normalize 应把反向拖动变成正矩形');
+  console.log('✓ 网页扫码：原页面浮层框选 → 只解码框住的一块 → 导入成功并自动撤掉；空选区/过小选区/Esc 都有处理');
 }
 
 /* ---------------- Passkey ---------------- */

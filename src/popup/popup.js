@@ -709,9 +709,8 @@
     const btn = $('scanPageBtn');
     btn.disabled = true;
     try {
-      await send('qr.select');
-      toast('已截图，请在打开的窗口里框住二维码');
-      setTimeout(() => window.close(), 300);
+      await send('qr.select');       // 截图 + 在当前页面盖一层浮层
+      window.close();                // 弹窗让开，浮层才能被操作
     } catch (e) {
       toast('扫码失败：' + e.message);
       btn.disabled = false;
