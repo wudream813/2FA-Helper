@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "2FA Helper",
   "short_name": "2FA Helper",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "离线 TOTP 保管库：本地快照、WebDAV/网盘加密备份、端到端同步、扫码导入、Passkey 存放与自动填充。",
   "icons": {
     "16": "icons/icon16.png",

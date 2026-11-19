@@ -1,5 +1,25 @@
 # 更新日志
 
+## v1.7.1 — 2026-11-18
+
+**修「识别失败：二维码解码器未加载」。**
+
+上一版把 jsQR 做成「点扫码时才懒加载」，某些 Chromium 版本在那个时机拿不到
+`importScripts` 的结果，于是整条链路直接失败。现在：
+
+- **启动时就同步加载** `vendor/jsqr.js`（和 Firefox 的静态引入一致，这是
+  `importScripts` 最可靠的时机）
+- 兜底通道：万一还是没拿到，就用 `await import('vendor/jsqr.mjs')`
+  —— 动态 import 不依赖 `importScripts`，也不需要 `unsafe-eval`
+- 失败不再是白框一次：点 ▣ 时先确保解码器就位，拿不到就直接报原因
+  （`二维码解码器没加载出来：<真实报错>`），并提示可改用粘贴密钥 / 截图导入
+- 新增 `qr.diag` 自检路由，返回 `{jsQR, importScripts, error, moduleUrl}`
+- **新增 `test/qr-load.mjs`**：模拟 service worker 用 `importScripts` 真读
+  `vendor/jsqr.js` → 用 `vendor/qrcode.js` 造一张二维码像素图 → 用
+  `lib/qr.js` 的 `decodeImageData` 解出原文 → 再验一遍 ESM 兜底也能解。
+  这条链路以前没人测，才让这个 bug 跑到用户手上。
+
+
 ## v1.7.0 — 2026-11-18
 
 **扫码改成「一次点击」为主：能直接认出来，就不打扰你。**

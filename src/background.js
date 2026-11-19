@@ -4,11 +4,19 @@
 
 (function (root) {
   const LIB = ['lib/util.js', 'lib/totp.js', 'lib/crypto.js', 'lib/vault.js', 'lib/providers.js', 'lib/backup.js', 'lib/sync.js', 'lib/qr.js'];
+  const decoderError = { message: '' };
   // Chromium service worker: pull the classic libs in. Firefox event page: manifest already did it.
-  if (typeof importScripts === 'function' && !root.F2A) {
+  if (typeof importScripts === 'function' && (!root.F2A || !root.F2A.vault)) {
     for (const f of LIB) importScripts(f);
-  } else if (typeof importScripts === 'function' && root.F2A && !root.F2A.vault) {
-    for (const f of LIB) importScripts(f);
+  }
+  // jsQR 也在启动阶段同步拉一次：importScripts 在 worker 刚启动时最可靠，
+  // 等用户点「扫码」时再懒加载，某些 Chromium 版本会拿不到结果。
+  if (typeof root.jsQR !== 'function' && typeof importScripts === 'function') {
+    try {
+      importScripts('vendor/jsqr.js');
+    } catch (e) {
+      decoderError.message = String((e && e.message) || e);
+    }
   }
 
   const F2A = root.F2A;
@@ -71,15 +79,39 @@
 
   /* 二维码解码器按需加载：Chromium 的 SW 用 importScripts，Firefox 的
      background.scripts 已在 manifest 里静态引入，这里检测一下即可。 */
-  function ensureDecoder() {
+  let decoderLoading = null;
+  /** 确保 jsQR 可用：先试 importScripts，再试 dynamic import('vendor/jsqr.mjs')。 */
+  async function ensureDecoder() {
     if (typeof root.jsQR === 'function') return true;
-    try {
-      if (typeof importScripts === 'function') {
-        importScripts('vendor/jsqr.js');
-        return typeof root.jsQR === 'function';
+    if (decoderLoading) return decoderLoading;
+    decoderLoading = (async () => {
+      try {
+        if (typeof importScripts === 'function') importScripts('vendor/jsqr.js');
+      } catch (e) {
+        decoderError.message = String((e && e.message) || e);
       }
-    } catch (e) { /* fall through */ }
-    return typeof root.jsQR === 'function';
+      if (typeof root.jsQR === 'function') return true;
+      try {
+        // 字面量写死相对路径（扩展根目录），两个浏览器都把 background.js 放在根上
+        const mod = await import('./vendor/jsqr.mjs');
+        const fn = (mod && (mod.default || mod.jsQR)) || null;
+        if (typeof fn === 'function') {
+          root.jsQR = fn;
+          return true;
+        }
+        decoderError.message = decoderError.message || 'vendor/jsqr.mjs 没有导出 jsQR';
+      } catch (e) {
+        decoderError.message = decoderError.message || String((e && e.message) || e);
+      }
+      decoderLoading = null; // 允许下次重试
+      return typeof root.jsQR === 'function';
+    })();
+    return decoderLoading;
+  }
+
+  async function needDecoder() {
+    if (await ensureDecoder()) return;
+    throw new Error('二维码解码器未加载' + (decoderError.message ? '（' + decoderError.message + '）' : ''));
   }
 
   async function activeTab() {
@@ -218,18 +250,29 @@
     /* ---- 扫码 / 粘贴 统一入口 ---- */
     'scan.handle': async ({ text }) => parseScanned(String(text || '').trim()),
 
+    /* 解码器自检（排查「二维码解码器未加载」用） */
+    'qr.diag': async () => ({
+      jsQR: typeof root.jsQR,
+      importScripts: typeof importScripts,
+      error: decoderError.message,
+      moduleUrl: typeof api.runtime.getURL === 'function' ? api.runtime.getURL('vendor/jsqr.mjs') : '',
+    }),
+
     /* 截取当前标签页，回传 PNG data URL（调用方自己解码） */
     'qr.capture': async () => ({ dataUrl: await captureVisible() }),
 
     /* 点 ▣ 之后：先整屏试一次（常见情况一次点击就完事），认不出再让用户在页面上框选 */
     'qr.select': async () => {
+      // 先把解码器准备好：拿不到就直接报清楚，别让用户白框一次
+      if (!(await ensureDecoder())) {
+        const why = decoderError.message ? `：${decoderError.message}` : '';
+        throw new Error(`二维码解码器没加载出来${why}。可以先用「粘贴密钥」或截图导入；也可以在 chrome://extensions 点开本扩展的「Service Worker / 检查」，把 Console 里的红色报错发我。`);
+      }
       const dataUrl = await captureVisible();
-      if (ensureDecoder()) {
-        const auto = await decodeAndImport(dataUrl, { x: 0, y: 0, w: 999999, h: 999999 }, null, { silent: true });
-        if (auto.handled) {
-          await notifyTab(auto);
-          return auto;
-        }
+      const auto = await decodeAndImport(dataUrl, { x: 0, y: 0, w: 999999, h: 999999 }, null, { silent: true });
+      if (auto.handled) {
+        await notifyTab(auto);
+        return auto;
       }
       const tab = await activeTab();
       if (!tab || tab.id == null) throw new Error('找不到当前标签页');
@@ -244,7 +287,7 @@
 
     /* 用户框好了 → 重新截屏（此时浮层已隐藏）→ 只解码这一块 */
     'overlay.crop': async ({ rect, viewport }) => {
-      if (!ensureDecoder()) throw new Error('二维码解码器未加载');
+      await needDecoder();
       const dataUrl = await captureVisible();
       const result = await decodeAndImport(dataUrl, rect, viewport);
       if (!result.handled) return { noQr: true };
