@@ -80,9 +80,9 @@
       connectLabel: '连接 Dropbox',
     },
     {
-      id: 'onedrive', label: 'OneDrive', kind: 'oauth', cost: 'oauth',
+      id: 'onedrive', label: 'OneDrive', kind: 'oauth', cost: 'builtin',
       fields: [
-        { key: 'clientId', label: '应用程序（客户端）ID', placeholder: '00000000-0000-0000-0000-000000000000', wide: true },
+        { key: 'clientId', label: '应用程序（客户端）ID', placeholder: '00000000-0000-0000-0000-000000000000', wide: true, builtin: true, advanced: true },
         { key: 'tenant', label: '租户', placeholder: 'common' },
         { key: 'filePath', label: '云端文件名', placeholder: '2fa-helper-backup.json' },
       ],
@@ -107,8 +107,8 @@
       b.appendChild(document.createTextNode(p.label));
       if (p.id !== 'none') {
         const cost = document.createElement('span');
-        cost.className = 'cost' + (p.cost === 'oauth' ? ' oauth' : '');
-        cost.textContent = p.cost === 'oauth' ? '需注册' : '免注册';
+        cost.className = 'cost' + (p.cost === 'oauth' ? ' oauth' : p.cost === 'builtin' ? ' builtin' : '');
+        cost.textContent = p.cost === 'oauth' ? '需注册' : p.cost === 'builtin' ? '已内置' : '免注册';
         b.appendChild(document.createTextNode(' '));
         b.appendChild(cost);
       }
@@ -188,6 +188,19 @@
         }
       }
 
+      const builtinId = p.kind === 'oauth' && F2A.providers && F2A.providers.builtinClient
+        ? F2A.providers.builtinClient(p.id) : '';
+      if (builtinId) {
+        const note = document.createElement('div');
+        note.className = 'builtin-note';
+        const strong = document.createElement('b');
+        strong.textContent = '点一下就能连 —— 已内置客户端 ID，不用去任何地方注册。';
+        const small = document.createElement('span');
+        small.textContent = '直接点下面的「' + (p.connectLabel || '连接') + '」登录授权即可。如果你是开发者、想用自己的应用，把「客户端 ID」换成你自己的（下方蓝色回调地址要加到你自己的应用里）。';
+        note.append(strong, small);
+        panel.appendChild(note);
+      }
+
       if (p.kind === 'oauth') {
         const box = document.createElement('div');
         box.className = 'redirect-box';
@@ -222,7 +235,25 @@
                 : secretsInfo.hasGdriveSecret;
             input.placeholder = has ? '已保存（留空则保持不变）' : (f.placeholder || '');
           }
-          input.value = f.secret ? '' : (providerSettings(p.id)[f.key] || '');
+          const stored = providerSettings(p.id)[f.key] || '';
+          input.value = f.secret ? '' : (stored || (f.builtin ? F2A.providers.builtinClient(p.id) : ''));
+          if (f.builtin && !stored && input.value) {
+            input.dataset.builtin = '1';
+            input.addEventListener('input', () => { delete input.dataset.builtin; });
+            const reset = document.createElement('button');
+            reset.className = 'btn ghost tiny';
+            reset.type = 'button';
+            reset.textContent = '用内置';
+            reset.addEventListener('click', async () => {
+              try {
+                await send('settings.set', { providers: { [p.id]: { [f.key]: '' } } });
+                settings = await send('settings.get');
+                renderPanels();
+                toast('已恢复为内置客户端 ID');
+              } catch (e) { toast(e.message, true); }
+            });
+            label.appendChild(reset);
+          }
           input.addEventListener('change', async () => {
             try {
               if (f.secret) {

@@ -264,6 +264,56 @@ await test('下载 + 测试连接', async () => {
   assert.match(res.message, /OneDrive 连接正常/);
 });
 
+console.log('\n内置客户端（一键连接）');
+await test('未填 Client ID 时自动使用内置 ID 发起授权', async () => {
+  // 清空令牌与 clientId，模拟「普通用户什么都没填，直接点连接」
+  // 令牌置为「已过期且无 refresh token」→ 必然走交互式授权
+  await F2A.vault.setSecrets({ tokens: { onedrive: { access_token: '', refresh_token: '', expiry: 0 } } });
+  await F2A.vault.setSettings({ providers: { onedrive: { clientId: '', tenant: 'common', filePath: '2fa-helper-backup.json' } } });
+
+  let authUrl = '';
+  const prevFlow = globalThis.chrome.identity.launchWebAuthFlow;
+  globalThis.chrome.identity.launchWebAuthFlow = async ({ url }) => {
+    authUrl = url;
+    return 'https://test-id.chromiumapp.org/?code=the-code';
+  };
+  const prevFetch = globalThis.fetch;
+  let tokenBody = '';
+  globalThis.fetch = async (u, o = {}) => {
+    if (String(u).includes('login.microsoftonline.com') && String(u).endsWith('/token')) {
+      tokenBody = String(o.body);
+      return new Response(JSON.stringify({ access_token: 'new-token', refresh_token: 'r', expires_in: 3600 }), { status: 200 });
+    }
+    return prevFetch(u, o);
+  };
+  try {
+    const token = await P.connect('onedrive').then(() => F2A.vault.getSecrets());
+    assert.ok(token, '应保存令牌');
+    assert.match(authUrl, /client_id=5a7712eb-cd4c-4920-8893-073538113163/, '授权 URL 应带上内置客户端 ID');
+    assert.match(authUrl, /code_challenge_method=S256/, '必须用 PKCE');
+    assert.match(authUrl, /scope=Files\.ReadWrite\.AppFolder\+offline_access/, '只申请 App Folder 权限');
+    assert.ok(!/client_secret/.test(tokenBody), '公开客户端不能提交 client_secret');
+  } finally {
+    globalThis.fetch = prevFetch;
+    globalThis.chrome.identity.launchWebAuthFlow = prevFlow;
+  }
+});
+
+await test('内置 ID 是公开标识、不含任何密钥', async () => {
+  assert.equal(P.builtinClient('onedrive'), '5a7712eb-cd4c-4920-8893-073538113163');
+  assert.equal(P.builtinClient('gdrive'), '', 'Google 未内置时应返回空串，退回用户自填');
+});
+
+await test('用户自己填了 Client ID 时以用户的为准', async () => {
+  await F2A.vault.setSecrets({ tokens: { onedrive: { access_token: '', refresh_token: '', expiry: 0 } } });
+  await F2A.vault.setSettings({ providers: { onedrive: { clientId: 'mine', tenant: 'common', filePath: '2fa-helper-backup.json' } } });
+  let authUrl = '';
+  const prevFlow = globalThis.chrome.identity.launchWebAuthFlow;
+  globalThis.chrome.identity.launchWebAuthFlow = async ({ url }) => { authUrl = url; throw new Error('captured'); };
+  try { await P.connect('onedrive').catch(() => {}); } finally { globalThis.chrome.identity.launchWebAuthFlow = prevFlow; }
+  assert.match(authUrl, /client_id=mine/);
+});
+
 console.log('\n错误处理');
 await test('远程 404 时提示先备份', async () => {
   globalThis.fetch = async (u) => {

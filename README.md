@@ -72,11 +72,12 @@ npm run test:all       # 全部
 | **文件夹同步** | 不用 | 什么都不用 | 新手；系统里已经装了 OneDrive / iCloud / 坚果云 桌面客户端 |
 | **对象存储（S3）** | 不用 | AccessKey + SecretKey（后台一键生成） | 想最稳最快；已有 R2 / B2 / MinIO / OSS |
 | **WebDAV 网盘** | 不用 | 账号 + 应用密码 | 有坚果云 / Nextcloud / 群晖；或用 AList 网关接任意网盘 |
-| Google Drive / Dropbox / OneDrive | **要**（3~5 分钟建 OAuth 客户端） | Client ID + 回调地址 | 只想用这三家，且不介意注册 |
+| **OneDrive**（已内置客户端） | 不用 | 什么都不用，点「连接 OneDrive」登录即可 | 想用微软账号、后台定时直传 |
+| Google Drive / Dropbox | **要**（3~5 分钟建 OAuth 客户端） | Client ID + 回调地址 | 只用这两家，且不介意注册 |
 
 设置页里前三种带绿色「免注册」徽标，后三种带灰色「需注册」。它们上传的是**同一个加密信封**，可以同时配多个，内容完全一致。
 
-> 为什么 OAuth 那三家要注册？扩展不允许内置开发者密钥（会被厂商判定为滥用并封禁）。所以那三条路只能你自己建客户端——这就是把它排到最后的理由，不是功能缺失。
+> OneDrive 之所以能「点一下就连」，是因为本项目**内置了自己注册的公开客户端 ID**（只有 ID，没有密钥，写在 `providers.js` 的 `BUILTIN_CLIENTS` 里）。Google Drive / Dropbox 目前没内置，所以仍然需要自建——代码里已经留了位置，注册好填一行即可。
 
 ---
 
@@ -162,9 +163,11 @@ npm run test:all       # 全部
 
 ---
 
-### 2.4 三家 OAuth 网盘（要注册开发者应用）
+### 2.4 OAuth 网盘：OneDrive 已内置，其余需自建
 
-只有在上面三条路都走不通时才建议动这三家。它们共用一个**回调地址**：设置页里对应面板顶部那行等宽字体地址，旁边有「复制」按钮。
+**OneDrive 不用注册**（见下）。Google Drive / Dropbox 需要你自建客户端，它们共用一个**回调地址**：设置页里对应面板顶部那行等宽字体地址，旁边有「复制」按钮。
+
+> **给别人用时的注意事项**：内置客户端只内置了「ID」，没有密钥，所以分发给别人是安全的。但微软对**新注册的多租户应用**有个限制——没有通过「发布者验证（MPN ID）」的应用，**其他组织的账号（工作/学校邮箱）无法自行同意**，会弹「需要管理员批准」；**个人微软账号不受影响，点一下就能同意**。如果你的用户大多是个人账号，现在的配置就够了；如果他们用公司账号，对方需要管理员点一次同意，或者你去 Partner Center 完成发布者验证。
 
 > 每个浏览器的扩展 ID 不同（Firefox 是 `https://<uuid>.extensions.allizom.org/`），换浏览器要为新地址重复「填回调地址」这一步，或者干脆把多个地址都加进平台的白名单。
 
@@ -185,7 +188,18 @@ npm run test:all       # 全部
 3. Redirect URIs 填同一个回调地址
 4. 把 **App key** 粘进扩展 →「连接 Dropbox」（PKCE，不需要 App secret）
 
-#### OneDrive / Microsoft 365（手把手，约 3 分钟）
+#### OneDrive（已内置客户端：点一下就能连）
+
+设置页 → 备份渠道 → **OneDrive** → 直接点 **「连接 OneDrive」** → 用微软账号登录 → 点「接受」→ 完成。
+
+**不需要去 Azure、不需要填任何 ID。** 备份写到 OneDrive 的 `应用 / 2FA Helper / 2fa-helper-backup.json`，只有本扩展看得见。
+
+授权页上只会有**一条**权限：「对应用程序的文件夹具有完全访问权限」——不会出现「读取您的个人资料」，因为申请的 scope 只有 `Files.ReadWrite.AppFolder offline_access`，没有 `User.Read`，也没有 `Files.ReadWrite.All`。
+
+> 分发给别人也一样：manifest 里固定了 `key`，所以谁的扩展 ID 都是 `ahkfbinhhpfhjdmogafkgfecajfldmal`，回调地址与我们注册的那条一致 —— 换台电脑、换个人装同一个 zip，都是点一下就通。
+
+<details>
+<summary><b>进阶：换成你自己的 Azure 应用（可选，约 3 分钟）</b></summary>
 
 我们的扩展用**授权码 + PKCE、不带客户端密钥**的公开客户端流程，所以 Azure 里只需要「注册 → 填一条回调地址 → 加一个权限」三件事，**不需要生成密码/证书**。
 
@@ -240,6 +254,8 @@ https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/
 | `AADSTS65005` / invalid scope | 权限加在了「应用程序权限」而不是「委托的权限」 |
 | `AADSTS7000218` / client_secret required | 回调地址注册在 **Web** 平台下了。改成 SPA 平台（Web 平台要求密钥，公开客户端用不了） |
 | `AADSTS50020` / account does not exist in tenant | 账户类型选了「仅此组织目录」，但你在用个人账户登录。改成「任何组织目录…和个人 Microsoft 账户」，或把设置页的租户改成 `consumers` |
+
+</details>
 
 ---
 

@@ -66,7 +66,7 @@
       <div class="cost-hint">
         <strong>不想注册开发者应用？</strong> 三种「账号密钥直连」：<b>文件夹同步</b>（零配置，靠系统网盘客户端同步）·
         <b>对象存储</b>（AccessKey + SecretKey）· <b>WebDAV 网盘</b>（坚果云 / pCloud / AList 网关等，账号 + 应用密码）。
-        Google Drive / OneDrive / Dropbox 官方只提供 OAuth，需要自建客户端，已放在最后三个标签里。
+        Google Drive / Dropbox 需要自建 OAuth 客户端；<b>OneDrive 已内置</b>本扩展注册的客户端，勾一下就能连。
       </div>
       <p class="desc">选择一个默认渠道用于「立即备份」与自动备份。同时可以配置多个渠道，备份文件内容完全相同（都是加密信封）。</p>
 
@@ -270,7 +270,7 @@
   <template id="tpl-help-webdav">坚果云：<code>https://dav.jianguoyun.com/dav/2fa-helper/backup.json</code>（密码请用「应用密码」，不要用登录密码）。Nextcloud / 群晖 / 亿方云同理。首次备份会自动创建目录（若服务端允许）。</template>
   <template id="tpl-help-gdrive">在 Google Cloud Console 启用 <b>Google Drive API</b> → 创建 OAuth 客户端（类型「Web 应用」）→ 把下方回调地址加入「已获授权的重定向 URI」。Client Secret 可留空尝试 PKCE；若报 <code>client_secret is missing</code> 再填写。</template>
   <template id="tpl-help-dropbox">在 Dropbox App Console 创建 <b>Scoped App</b>，权限勾选 <code>files.content.write</code> 与 <code>files.content.read</code>，把下方回调地址填入 Redirect URIs，然后粘贴 App key。使用 PKCE，无需 App secret。</template>
-  <template id="tpl-help-onedrive">在 Azure 门户「应用注册」新建应用 → 添加平台「Web」并填入下方回调地址 → 允许公共客户端流 → API 权限添加 <code>Microsoft Graph 的 Files.ReadWrite.AppFolder</code>（委托）。备份写入应用的专属 App Folder。</template>
+  <template id="tpl-help-onedrive">点「连接 OneDrive」登录即可 —— 已内置本扩展注册的客户端，不需要你去 Azure 注册任何东西。备份写入应用专属的 App Folder（只有本扩展能看见）。<br />进阶：如果你要用自己的 Azure 应用，把下面的客户端 ID 换成你的，并在你的应用里添加平台「单页应用程序 (SPA)」+ 上方回调地址，API 权限加 <code>Microsoft Graph 的 Files.ReadWrite.AppFolder</code>（委托），身份验证里把「允许公共客户端流」设为是。</template>
 
   <div id="toast" class="toast" hidden></div>
 

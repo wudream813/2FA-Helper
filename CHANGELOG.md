@@ -1,5 +1,21 @@
 # 更新日志
 
+## v1.3.0 — 2026-11-18
+
+**主题：OneDrive 变成「点一下就能连」。**
+
+- 内置本扩展自己注册的**公开客户端 ID**（`providers.js` 的 `BUILTIN_CLIENTS`）：用户装好扩展 → 点「连接 OneDrive」→ 登录 → 接受，**不需要去 Azure 注册任何东西**
+- 设置页 OneDrive 面板：客户端 ID 自动预填并显示「用内置」还原按钮，顶部有「点一下就能连」提示；渠道标签新增蓝色 **「已内置」** 徽标
+- 三态徽标：`免注册`（文件夹/对象存储/WebDAV）· `已内置`（OneDrive）· `需注册`（Google Drive / Dropbox）
+- 只有 ID、没有密钥 —— 公开客户端的 ID 本来就会出现在授权 URL 里，写进代码是安全的；想要自己的应用，把 ID 换掉即可（以用户填的为准）
+- 文档补充分发注意事项：微软限制「未通过发布者验证的多租户应用」不能被其他组织账号自行同意（个人账号不受影响）
+
+### 测试
+
+- `test/providers.mjs` +3：未填 ID 时授权 URL 自动带内置 ID 且走 PKCE、只申请 `Files.ReadWrite.AppFolder offline_access`、不提交 `client_secret`；用户自填 ID 时以用户的为准（19 项）
+- `test/ui.mjs` 新增：OneDrive 面板预填内置 ID、显示「点一下就能连」提示、回调地址形状正确、徽标为「已内置」（19 组）
+
+
 ## v1.2.1 — 2026-11-18
 
 - **固定 Chromium 扩展 ID**（manifest 内置 `key`）：扩展 ID 恒为 `ahkfbinhhpfhjdmogafkgfecajfldmal`，回调地址恒为 `https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/`，OAuth 重定向 URI 只需注册一次

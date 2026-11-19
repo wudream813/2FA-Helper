@@ -94,6 +94,7 @@
   .pin { font-size: 10px; opacity: .8; }
   .cost { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #e2f2ee; color: #0f766e; margin-left: 6px; }
   .cost.oauth { background: #f5f7f8; color: #6b7683; border: 1px solid var(--border); }
+  .cost.builtin { background: #eaf3ff; color: #1d4ed8; }
   .cost-hint { font-size: 12.5px; color: #0f766e; background: #e2f2ee; border-radius: 9px; padding: 10px 12px; margin: 4px 0 2px; }
   .field-row select { border: 1px solid var(--border); background: #f7f9fa; border-radius: 9px; padding: 8px 10px; font-size: 13px; color: var(--fg); }
   .sub-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-top: 14px; background: #fcfdfd; }
@@ -136,7 +137,7 @@
 <div class="page">
   <header>
     <h1>2FA Helper</h1>
-    <span>v1.2.0 · Manifest V3 · Firefox / Edge / Chromium</span>
+    <span>v1.3.0 · Manifest V3 · Firefox / Edge / Chromium</span>
   </header>
   <p class="lead">
     下面是扩展真实界面的静态预览（演示数据，非真实密钥）。左侧是点击图标弹出的主面板，右侧是设置页的加密与备份部分。
@@ -233,9 +234,9 @@
           <span class="tab">文件夹同步 <span class="cost">免注册</span> <span class="pin">推荐</span></span>
           <span class="tab">对象存储 <span class="cost">免注册</span></span>
           <span class="tab">WebDAV <span class="cost">免注册</span></span>
+          <span class="tab">OneDrive <span class="cost builtin">已内置</span></span>
           <span class="tab">Google Drive <span class="cost oauth">需注册</span></span>
           <span class="tab">Dropbox <span class="cost oauth">需注册</span></span>
-          <span class="tab">OneDrive <span class="cost oauth">需注册</span></span>
         </div>
 
         <div class="sub-card">

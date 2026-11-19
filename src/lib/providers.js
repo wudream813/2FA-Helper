@@ -41,10 +41,22 @@
     onedrive: {
       id: 'onedrive', label: 'OneDrive（Microsoft 账户）', kind: 'oauth',
       fields: ['clientId', 'tenant', 'filePath'],
-      cost: 'oauth',
-      help: '在 Azure 应用注册中创建「移动和桌面应用程序」，添加「Web」平台重定向 URI，启用公共客户端流。',
+      cost: 'builtin',
+      help: '点一下就能连（内置客户端 ID）。也支持换成你自己的 Azure 应用：SPA 平台 + 回调地址 + Files.ReadWrite.AppFolder。',
     },
   };
+
+  /* 内置（本扩展自己注册的）公开客户端 ID —— 只有 ID，没有密钥：
+     公开客户端的 ID 本来就会出现在授权 URL 里，写在代码里是安全的。
+     有内置值 = 用户「点一下就能连」，不用自己去注册应用；留空则退回「自己填」。 */
+  const BUILTIN_CLIENTS = {
+    gdrive: '',
+    dropbox: '',
+    onedrive: '5a7712eb-cd4c-4920-8893-073538113163',
+  };
+
+  /** 该渠道内置的公开客户端 ID（没有则返回空串）。 */
+  function builtinClient(id) { return BUILTIN_CLIENTS[id] || ''; }
 
   const SCOPES = {
     gdrive: 'https://www.googleapis.com/auth/drive.file',
@@ -135,7 +147,8 @@
       const settings = await F2A.vault.getSettings();
       const cfg = settings.providers.gdrive;
       const secrets = await F2A.vault.getSecrets();
-      if (!cfg.clientId) throw new Error('请先填写 Google Client ID');
+      const clientId = cfg.clientId || builtinClient('gdrive');
+      if (!clientId) throw new Error('请先填写 Google Client ID');
       const cached = tokenCache(secrets, 'gdrive');
       if (cached && cached.access_token && cached.expiry - 60000 > Date.now()) return cached.access_token;
 
@@ -146,7 +159,7 @@
 
       const { verifier, challenge } = await pkce();
       const params = new URLSearchParams({
-        client_id: cfg.clientId,
+        client_id: clientId,
         response_type: 'code',
         scope: SCOPES.gdrive,
         redirect_uri: redirectUrl(),
@@ -159,7 +172,7 @@
       const code = await runAuthFlow('https://accounts.google.com/o/oauth2/v2/auth?' + params);
 
       const body = new URLSearchParams({
-        client_id: cfg.clientId,
+        client_id: clientId,
         code,
         code_verifier: verifier,
         grant_type: 'authorization_code',
@@ -185,7 +198,7 @@
       const settings = await F2A.vault.getSettings();
       const secrets = await F2A.vault.getSecrets();
       const body = new URLSearchParams({
-        client_id: settings.providers.gdrive.clientId,
+        client_id: settings.providers.gdrive.clientId || builtinClient('gdrive'),
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       });
@@ -259,7 +272,8 @@
     async authorize(interactive = true) {
       const settings = await F2A.vault.getSettings();
       const cfg = settings.providers.dropbox;
-      if (!cfg.appKey) throw new Error('请先填写 Dropbox App Key');
+      const appKey = cfg.appKey || builtinClient('dropbox');
+      if (!appKey) throw new Error('请先填写 Dropbox App Key');
       const secrets = await F2A.vault.getSecrets();
       const cached = tokenCache(secrets, 'dropbox');
       if (cached && cached.access_token && cached.expiry - 60000 > Date.now()) return cached.access_token;
@@ -270,7 +284,7 @@
 
       const { verifier, challenge } = await pkce();
       const params = new URLSearchParams({
-        client_id: cfg.appKey,
+        client_id: appKey,
         response_type: 'code',
         code_challenge: challenge,
         code_challenge_method: 'S256',
@@ -281,7 +295,7 @@
       const body = new URLSearchParams({
         code,
         grant_type: 'authorization_code',
-        client_id: cfg.appKey,
+        client_id: appKey,
         code_verifier: verifier,
         redirect_uri: redirectUrl(),
       });
@@ -304,7 +318,7 @@
       const body = new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
-        client_id: settings.providers.dropbox.appKey,
+        client_id: settings.providers.dropbox.appKey || builtinClient('dropbox'),
       });
       const { json } = await fetchJson('https://api.dropboxapi.com/oauth2/token', {
         method: 'POST',
@@ -361,7 +375,8 @@
     async authorize(interactive = true) {
       const settings = await F2A.vault.getSettings();
       const cfg = settings.providers.onedrive;
-      if (!cfg.clientId) throw new Error('请先填写 Microsoft 应用（客户端）ID');
+      const clientId = cfg.clientId || builtinClient('onedrive');
+      if (!clientId) throw new Error('请先填写 Microsoft 应用（客户端）ID');
       const secrets = await F2A.vault.getSecrets();
       const cached = tokenCache(secrets, 'onedrive');
       if (cached && cached.access_token && cached.expiry - 60000 > Date.now()) return cached.access_token;
@@ -373,7 +388,7 @@
       const tenant = await this.tenantOf();
       const { verifier, challenge } = await pkce();
       const params = new URLSearchParams({
-        client_id: cfg.clientId,
+        client_id: clientId,
         response_type: 'code',
         redirect_uri: redirectUrl(),
         response_mode: 'query',
@@ -383,7 +398,7 @@
       });
       const code = await runAuthFlow(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?` + params);
       const body = new URLSearchParams({
-        client_id: cfg.clientId,
+        client_id: clientId,
         scope: SCOPES.onedrive,
         code,
         redirect_uri: redirectUrl(),
@@ -408,7 +423,7 @@
       const settings = await F2A.vault.getSettings();
       const tenant = settings.providers.onedrive.tenant || 'common';
       const body = new URLSearchParams({
-        client_id: settings.providers.onedrive.clientId,
+        client_id: settings.providers.onedrive.clientId || builtinClient('onedrive'),
         scope: SCOPES.onedrive,
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
@@ -838,6 +853,7 @@
     providers: {
       META, SCOPES, WEBDAV_PRESETS, S3_PRESETS,
       list: () => Object.values(META), connect, disconnect, isConnected, upload, download, test, redirectUrl, webdav, s3, folder,
+      BUILTIN_CLIENTS, builtinClient,
     },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

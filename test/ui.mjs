@@ -175,10 +175,29 @@ assert.equal(tabs.length, 7, '应有 7 个渠道标签（不启用/文件夹/对
 const tabTexts = [...tabs].map((t) => t.textContent);
 assert.ok(tabTexts.some((t) => t.includes('文件夹同步')), '缺少文件夹同步渠道');
 assert.ok(tabTexts.some((t) => t.includes('对象存储')), '缺少对象存储渠道');
-assert.equal(opt.document.querySelectorAll('.provider-tab .cost.oauth').length, 3, '三个 OAuth 渠道应标注「需注册」');
-console.log('✓ 设置页：7 个渠道标签，其中 4 个标注「免注册」、3 个标注「需注册」');
+assert.equal(opt.document.querySelectorAll('.provider-tab .cost.oauth').length, 2, 'Google / Dropbox 应标注「需注册」');
+assert.equal(opt.document.querySelectorAll('.provider-tab .cost.builtin').length, 1, 'OneDrive 应标注「已内置」');
+console.log('✓ 设置页：7 个渠道标签，4 个「免注册」+ 1 个「已内置」+ 2 个「需注册」');
+
+/* 一键连接：OneDrive 面板必须预填内置客户端 ID */
+{
+  const tab = [...opt.document.querySelectorAll('.provider-tab')].find((t) => t.textContent.includes('OneDrive'));
+  tab.click();
+  await tick(200);
+  const panel = [...opt.document.querySelectorAll('.panel')].find((p) => p.classList.contains('active'));
+  const note = panel.querySelector('.builtin-note');
+  assert.ok(note, 'OneDrive 面板应显示「点一下就能连」提示');
+  assert.match(note.textContent, /已内置客户端 ID/);
+  const idInput = [...panel.querySelectorAll('input')].find((i) => /^[0-9a-f-]{36}$/.test(i.value));
+  assert.ok(idInput, '客户端 ID 应已预填内置值');
+  assert.equal(idInput.value, '5a7712eb-cd4c-4920-8893-073538113163');
+  const redirect = panel.querySelector('.redirect-box .url');
+  assert.match(redirect.textContent, /^https:\/\/[a-z0-9-]+\.chromiumapp\.org\/$/, '回调地址形状应为 https://<扩展ID>.chromiumapp.org/');
+  console.log('✓ 一键连接：OneDrive 预填内置客户端 ID、显示提示、回调地址正确');
+}
 assert.equal($o('cryptBadge').textContent, '未加密');
-console.log('✓ 设置页：渠道标签渲染 5 个，加密状态正确');
+assert.equal(opt.document.querySelectorAll('.provider-tab').length, 7, '渠道标签数量应为 7');
+console.log('✓ 设置页：渠道标签渲染 7 个，加密状态正确');
 
 // switch to the WebDAV panel and fill config
 [...tabs].find((t) => t.textContent.includes('WebDAV')).click();
