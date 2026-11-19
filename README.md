@@ -181,6 +181,15 @@ Google 和微软不一样，**它的「Web 应用」客户端在换 token 时强
 | **B. 不内置，用户自己填** | 零风险 | 每个用户都要注册一次（见下） |
 | **C. 上架 Chrome Web Store 后用「Chrome 扩展程序」类型客户端** | 无 secret、绑定商店 ID | 只在商店安装时可用，Firefox / Edge 侧载都不适用 |
 
+**根因（一句话版）**：PKCE 是 RFC 7636 给公开客户端设计的「用挑战值代替 secret」的机制，但**「用不用 secret」是各家自己的政策，不是协议强制**。微软专门为浏览器端换 token 开了 SPA 平台（允许纯 PKCE 的公开客户端），Google 只在「已安装应用」类客户端上这么做；对「Web 应用」客户端，Google 把浏览器发起的 token 交换视为「跨域兑换」，仍然要求客户端认证 —— 所以同样的代码，微软那边不带 secret 能过，Google 那边报 `client_secret is missing`。
+
+| 客户端类型 | 换 token 要 secret 吗 | 能否配合扩展的回调地址 |
+| --- | --- | --- |
+| Microsoft（SPA 平台 + 允许公共客户端流） | 不要 | ✅ `https://ahkfbinh…chromiumapp.org/` |
+| Google「Web 应用」 | **要** | ✅ 但因此必须内置 secret 或让用户自填 |
+| Google「桌面应用」 | 不要 | ❌ 只接受 `127.0.0.1` 回环地址，扩展拦不到 |
+| Google「Chrome 扩展程序」 | 不要 | ⚠️ 需要扩展**已上架 Chrome Web Store**（要填商店 item ID），Firefox 侧载不适用 |
+
 **如果你选 A，把 ID 和 secret 填到这里就生效（一行一个，UI 会自动变成「已内置」并预填）：**
 
 ```js
