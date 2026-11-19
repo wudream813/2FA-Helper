@@ -33,6 +33,8 @@ function storageArea(map) {
 }
 
 const bgListener = { fn: null };
+const createdTabs = [];
+const createdWindows = [];
 
 function makeChrome(opts = {}) {
   return {
@@ -74,6 +76,10 @@ function makeChrome(opts = {}) {
       // 真实实现会截当前标签页；测试里返回一个合法 PNG data URL 前缀即可，
       // 真正的像素解码在下面被 stub 掉（jsdom 没有 canvas）。
       async captureVisibleTab() { return 'data:image/png;base64,iVBORw0KGgo='; },
+      async create(opts) { createdTabs.push(opts); return { id: createdTabs.length }; },
+    },
+    windows: {
+      async create(opts) { createdWindows.push(opts); return { id: 100 + createdWindows.length }; },
     },
   };
 }
@@ -150,7 +156,9 @@ assert.match(codeText, /^\d{3} \d{3}$/, '6 位码应格式化为 xxx xxx');
 
 // independently verify the code
 const expected = await bg.win.F2A.totp.generate({ secret: 'JBSWY3DPEHPK3PXP', digits: 6, period: 30 });
-assert.equal(codeText.replace(' ', ''), expected.code, '弹窗显示的验证码应与算法一致');
+// 跨 30 秒边界时页面上的码可能还是上一个窗口的，两种都接受
+const prevWindow = await bg.win.F2A.totp.generate({ secret: 'JBSWY3DPEHPK3PXP', digits: 6, period: 30 }, Date.now() - 30000);
+assert.ok([expected.code, prevWindow.code].includes(codeText.replace(' ', '')), '弹窗显示的验证码应与算法一致');
 console.log('✓ 弹窗：新增账户并生成正确的 TOTP，且宽度/格式符合预期');
 
 // search filter
@@ -319,41 +327,75 @@ console.log('✓ 自动填充：后台只回传验证码，不暴露密钥');
   console.log('✓ 免注册：WebDAV 预设一键填充、对象存储面板字段齐全');
 }
 
-/* ---------------- 扫描当前网页 ---------------- */
+/* ---------------- 扫描当前网页（框选） ---------------- */
 {
   const before = (await call({ type: 'vault.state' }, {})).data.entries.length;
   let captured = 0;
-  // background 用的是它自己那个 window 的 chrome 对象
   bg.win.chrome.tabs.captureVisibleTab = async () => { captured++; return 'data:image/png;base64,iVBORw0KGgo='; };
-  // jsdom 没有 canvas：把「解码」这一步换成固定结果，验证 wiring（截屏 → 解码 → 导入）
-  const qr = popup.F2A.qr;
-  const realGrab = qr.grabImageData, realDecode = qr.decodeImageData;
-  qr.grabImageData = () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 });
-  qr.decodeImageData = () => 'otpauth://totp/WebScan%20Demo:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=WebScan%20Demo';
-  // jsdom 在没有 canvas 依赖时不会真的解码 data URL，这里给 Image 一个立刻 onload 的替身
-  const RealImage = popup.Image;
-  popup.Image = class {
-    constructor() { this.onload = null; this.onerror = null; }
+
+  popup.document.getElementById('scanPageBtn').click();
+  await tick(300);
+  assert.equal(captured, 1, '应调用一次 captureVisibleTab');
+  assert.ok(storeSession.get('qrShot'), '截图应暂存到 storage.session 供框选窗口读取');
+  assert.equal(createdWindows.length, 1, '应打开一个框选小窗口');
+  assert.match(createdWindows[0].url, /selector\/selector\.html$/, '打开的应是 selector.html');
+  assert.equal(createdWindows[0].type, 'popup', '框选界面应是独立小窗口');
+
+  // ---- 框选窗口本身 ----
+  const { win: sel } = boot({
+    html: 'selector/selector.html',
+    scripts: ['vendor/jsqr.js', 'lib/util.js', 'lib/qr.js', 'selector/selector.js'],
+  });
+  // jsdom 不会真的解码 data URL / 没有 canvas：桩掉像素层，验证坐标与导入链路
+  const RealImage = sel.Image;
+  sel.Image = class {
+    constructor() { this.onload = null; this.onerror = null; this.naturalWidth = 1280; this.naturalHeight = 800; }
     set src(v) { this._src = v; setTimeout(() => this.onload && this.onload(), 0); }
     get src() { return this._src; }
   };
+  await tick(150);
+  const shot = sel.document.getElementById('shot');
+  shot.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 800, right: 1280, bottom: 800 });
 
-  popup.document.getElementById('scanPageBtn').click();
-  await tick(400);
-  assert.equal(captured, 1, '应调用一次 captureVisibleTab');
-  const after = (await call({ type: 'vault.state' }, {})).data.entries;
-  assert.equal(after.length, before + 1, '扫到的 otpauth 应被导入');
-  assert.ok(after.some((e) => e.issuer === 'WebScan Demo'), '导入的条目应来自网页二维码');
+  let cropRect = null;
+  sel.F2A.qr.cropImageData = (img, rect) => { cropRect = rect; return { data: new Uint8ClampedArray(4), width: 1, height: 1 }; };
+  sel.F2A.qr.decodeImageData = () => 'otpauth://totp/Picked%20From%20Page:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Picked%20From%20Page';
 
-  // 没识别到二维码时给出可读提示
-  qr.decodeImageData = () => null;
-  popup.document.getElementById('scanPageBtn').click();
+  // 1) 太小的框不触发识别（防误触）
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerdown', { clientX: 10, clientY: 10, bubbles: true }));
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerup', { clientX: 13, clientY: 13, bubbles: true }));
+  await tick(200);
+  assert.equal(cropRect, null, '过小的选区应被忽略');
+
+  // 2) 选区里没有二维码 → 可读提示，而不是静默失败
+  sel.F2A.qr.decodeImageData = () => null;
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }));
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerup', { clientX: 300, clientY: 300, bubbles: true }));
   await tick(300);
-  assert.match(popup.document.getElementById('toast').textContent, /没找到二维码/);
-  qr.grabImageData = realGrab;
-  qr.decodeImageData = realDecode;
-  popup.Image = RealImage;
-  console.log('✓ 网页扫码：截屏 → 解码 → 导入成功；识别不到时提示文案可读');
+  assert.match(sel.document.getElementById('err').textContent, /没有识别到二维码/);
+  assert.equal(cropRect && cropRect.w, 200, '这次也应该真的裁剪了 200×200 的区域');
+
+  // 3) 方向随便拖（从右下往左上）→ 归一化成正矩形 → 只解码这一块 → 导入
+  sel.F2A.qr.decodeImageData = () => 'otpauth://totp/Picked%20From%20Page:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=Picked%20From%20Page';
+  cropRect = null;
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerdown', { clientX: 500, clientY: 400, bubbles: true }));
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointermove', { clientX: 260, clientY: 180, bubbles: true }));
+  shot.parentElement.dispatchEvent(new sel.MouseEvent('pointerup', { clientX: 260, clientY: 180, bubbles: true }));
+  await tick(400);
+
+  // 跨 realm 的对象不能用 deepEqual 比结构，转成 JSON 字符串
+  assert.equal(JSON.stringify(cropRect), JSON.stringify({ x: 260, y: 180, w: 240, h: 220 }),
+    '框选区域应换算成截图里的像素矩形');
+  const after = (await call({ type: 'vault.state' }, {})).data.entries;
+  assert.equal(after.length, before + 1, '框选识别出的 otpauth 应被导入');
+  assert.ok(after.some((e) => e.issuer === 'Picked From Page'), '导入的条目应来自框选区域');
+  assert.match(sel.document.getElementById('result').textContent, /已导入 1 条/);
+
+  assert.equal(JSON.stringify(sel.__selector.normalizeRect({ x: 300, y: 200 }, { x: 100, y: 400 })),
+    JSON.stringify({ x: 100, y: 200, w: 200, h: 200 }), '反向拖动应被归一化为正矩形');
+
+  sel.Image = RealImage;
+  console.log('✓ 网页扫码：截图暂存 → 打开框选窗口 → 只解码框住的区域 → 导入成功；过小选区与空选区都有处理');
 }
 
 /* ---------------- Passkey ---------------- */

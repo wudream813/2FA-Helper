@@ -69,6 +69,25 @@
     throw new Error('无法识别的二维码内容（需要 otpauth://、迁移包、本扩展条目码或备份文件）');
   }
 
+  /** Capture the visible area of the active tab as a PNG data URL. */
+  async function captureVisible() {
+    const tabsApi = api.tabs;
+    if (!tabsApi || typeof tabsApi.captureVisibleTab !== 'function') {
+      throw new Error('当前浏览器不支持截取页面');
+    }
+    let dataUrl;
+    try {
+      dataUrl = await tabsApi.captureVisibleTab(null, { format: 'png' });
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (/permission|denied|activeTab/i.test(msg)) throw new Error('没有截取页面的权限，请把二维码截图后粘贴进来');
+      if (/chrome:|edge:|about:|extension:\/\//i.test(msg)) throw new Error('无法截取浏览器内部页面');
+      throw new Error('截取当前页面失败：' + msg);
+    }
+    if (!dataUrl || String(dataUrl).indexOf('data:image/') !== 0) throw new Error('截取当前页面失败');
+    return dataUrl;
+  }
+
   async function updateBadge() {
     try {
       const st = await F2A.vault.state();
@@ -140,23 +159,26 @@
     /* ---- 扫码 / 粘贴 统一入口 ---- */
     'scan.handle': async ({ text }) => parseScanned(String(text || '').trim()),
 
-    /* 截取当前标签页并回传 PNG data URL —— 由弹窗解码（弹窗才有 canvas） */
-    'qr.capture': async () => {
-      const tabsApi = api.tabs;
-      if (!tabsApi || typeof tabsApi.captureVisibleTab !== 'function') {
-        throw new Error('当前浏览器不支持截取页面');
-      }
-      let dataUrl;
+    /* 截取当前标签页，回传 PNG data URL（调用方自己解码） */
+    'qr.capture': async () => ({ dataUrl: await captureVisible() }),
+
+    /* 截取当前标签页 → 暂存 → 打开「框选」窗口，让用户只框住二维码那一块 */
+    'qr.select': async () => {
+      const dataUrl = await captureVisible();
       try {
-        dataUrl = await tabsApi.captureVisibleTab(null, { format: 'png' });
+        await api.storage.session.set({ qrShot: dataUrl });
       } catch (e) {
-        const msg = String((e && e.message) || e);
-        if (/permission|denied|activeTab/i.test(msg)) throw new Error('没有截取页面的权限，请把二维码截图后粘贴进来');
-        if (/chrome:|edge:|about:|extension:\/\//i.test(msg)) throw new Error('无法截取浏览器内部页面');
-        throw new Error('截取当前页面失败：' + msg);
+        // 极老的浏览器没有 storage.session：退回 local（用完即删）
+        await api.storage.local.set({ qrShot: dataUrl });
       }
-      if (!dataUrl || String(dataUrl).indexOf('data:image/') !== 0) throw new Error('截取当前页面失败');
-      return { dataUrl };
+      const target = api.runtime.getURL('selector/selector.html');
+      let opened = null;
+      if (api.windows && typeof api.windows.create === 'function') {
+        opened = await api.windows.create({ url: target, type: 'popup', width: 1100, height: 820 });
+      } else {
+        opened = await api.tabs.create({ url: target });
+      }
+      return { windowId: (opened && opened.id) || null };
     },
 
     /* ---- Passkey ---- */

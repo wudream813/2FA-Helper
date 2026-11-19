@@ -39,6 +39,24 @@
     return px;
   }
 
+  /** Crop `source` to a rectangle and return ImageData. Used by the region picker.
+      rect = {x, y, w, h} in the source's natural pixel space. */
+  function cropImageData(source, rect, opts = {}) {
+    const w0 = source.naturalWidth || source.videoWidth || source.width;
+    const h0 = source.naturalHeight || source.videoHeight || source.height;
+    if (!w0 || !h0) throw new Error('图片尚未加载完成');
+    const x = Math.max(0, Math.min(w0 - 1, Math.round(rect.x)));
+    const y = Math.max(0, Math.min(h0 - 1, Math.round(rect.y)));
+    const w = Math.max(1, Math.min(w0 - x, Math.round(rect.w)));
+    const h = Math.max(1, Math.min(h0 - y, Math.round(rect.h)));
+    const canvas = opts.canvas || root.document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(source, x, y, w, h, 0, 0, w, h);
+    return ctx.getImageData(0, 0, w, h);
+  }
+
   /** Decode an ImageData-like object ({data,width,height}). */
   function decodeImageData(imageData) {
     if (!hasDecoder()) throw new Error('二维码解码器未加载');
@@ -84,5 +102,5 @@
     return decodeImageData(grabImageData(img));
   }
 
-  Object.assign(F2A, { qr: { hasEncoder, hasDecoder, toCanvas, decodeImageData, grabImageData, decodeFile, fileToImage } });
+  Object.assign(F2A, { qr: { hasEncoder, hasDecoder, toCanvas, decodeImageData, cropImageData, grabImageData, decodeFile, fileToImage } });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

@@ -704,44 +704,19 @@
     }
   });
 
-  /* ---- 扫描当前网页里的二维码：截屏 → 解码 → 走同一套导入逻辑 ---- */
-  async function scanCurrentPage() {
+  /* ---- 扫描当前网页：截图后打开「框选」窗口，只解码框住的那一块 ---- */
+  $('scanPageBtn').addEventListener('click', async () => {
     const btn = $('scanPageBtn');
     btn.disabled = true;
-    toast('正在识别当前网页…');
     try {
-      const { dataUrl } = await send('qr.capture');
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('截图解码失败，请重试'));
-        img.src = dataUrl;
-      });
-      const text = F2A.qr.decodeImageData(F2A.qr.grabImageData(img));
-      if (!text) {
-        toast('当前网页没找到二维码，把二维码放大一点再试');
-        return;
-      }
-      const parsed = await send('scan.handle', { text });
-      if (parsed.action === 'sync-join') {
-        toast('这是同步配对码，请到设置页「端到端同步」中导入');
-        return;
-      }
-      if (parsed.action === 'restore') {
-        toast('这是加密备份文件，请到设置区的扫码导入里恢复');
-        return;
-      }
-      const res = await send('entry.import', { entries: parsed.entries, mode: 'merge' });
-      await reload();
-      toast(`已从网页导入 ${parsed.entries.length} 条，共 ${res.total} 条`);
+      await send('qr.select');
+      toast('已截图，请在打开的窗口里框住二维码');
+      setTimeout(() => window.close(), 300);
     } catch (e) {
       toast('扫码失败：' + e.message);
-    } finally {
       btn.disabled = false;
     }
-  }
-
-  $('scanPageBtn').addEventListener('click', scanCurrentPage);
+  });
 
   $('importBack').addEventListener('click', () => { show('mainView'); startTicking(); });
   $('importBtn').addEventListener('click', async () => {
