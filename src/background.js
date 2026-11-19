@@ -71,7 +71,6 @@
 
   /* 二维码解码器按需加载：Chromium 的 SW 用 importScripts，Firefox 的
      background.scripts 已在 manifest 里静态引入，这里检测一下即可。 */
-  let qrShot = null;
   function ensureDecoder() {
     if (typeof root.jsQR === 'function') return true;
     try {
@@ -105,6 +104,47 @@
     }
     if (!dataUrl || String(dataUrl).indexOf('data:image/') !== 0) throw new Error('截取当前页面失败');
     return dataUrl;
+  }
+
+  /** 解码一块区域并导入；silent=true 时失败不抛错，只回报 handled:false */
+  async function decodeAndImport(dataUrl, rect, viewport, opts = {}) {
+    let text = null;
+    try {
+      text = await F2A.qr.decodeDataUrlRegion(dataUrl, rect, viewport);
+    } catch (e) {
+      if (!opts.silent) throw new Error('解码失败：' + (e.message || e));
+      return { handled: false };
+    }
+    if (!text) return { handled: false };
+    let parsed;
+    try {
+      parsed = parseScanned(text);
+    } catch (e) {
+      if (!opts.silent) throw e;
+      return { handled: false };
+    }
+    if (parsed.action === 'sync-join') {
+      return { handled: true, needsOptions: '这是同步配对码，请到设置页「端到端同步」中导入。' };
+    }
+    if (parsed.action === 'restore') {
+      return { handled: true, needsOptions: '这是加密备份文件，请到设置页的扫码导入里恢复。' };
+    }
+    const res = await F2A.vault.importEntries(parsed.entries, { mode: 'merge' });
+    await updateBadge();
+    const first = parsed.entries[0] || {};
+    return { handled: true, imported: parsed.entries.length, total: res.total, label: first.issuer || first.account || '' };
+  }
+
+  /** 让页面显示一条结果提示（导入成功/需要去设置页） */
+  async function notifyTab(result) {
+    try {
+      const tab = await activeTab();
+      if (!tab || tab.id == null) return;
+      const text = result.needsOptions
+        ? result.needsOptions
+        : `已导入 ${result.imported} 条${result.label ? '：' + result.label : ''} · 共 ${result.total} 条`;
+      await api.tabs.sendMessage(tab.id, { type: 'overlay.toast', text, bad: !!result.needsOptions });
+    } catch (e) { /* toast 只是锦上添花 */ }
   }
 
   async function updateBadge() {
@@ -181,41 +221,47 @@
     /* 截取当前标签页，回传 PNG data URL（调用方自己解码） */
     'qr.capture': async () => ({ dataUrl: await captureVisible() }),
 
-    /* 截取当前标签页 → 直接在原页面盖一层浮层让用户框选（不开新窗口） */
+    /* 点 ▣ 之后：先整屏试一次（常见情况一次点击就完事），认不出再让用户在页面上框选 */
     'qr.select': async () => {
       const dataUrl = await captureVisible();
-      qrShot = dataUrl;
-      try { await api.storage.session.set({ qrShot: dataUrl }); } catch (e) { /* 可选 */ }
+      if (ensureDecoder()) {
+        const auto = await decodeAndImport(dataUrl, { x: 0, y: 0, w: 999999, h: 999999 }, null, { silent: true });
+        if (auto.handled) {
+          await notifyTab(auto);
+          return auto;
+        }
+      }
       const tab = await activeTab();
       if (!tab || tab.id == null) throw new Error('找不到当前标签页');
       try {
-        const res = await api.tabs.sendMessage(tab.id, { type: 'overlay.open', shot: dataUrl });
+        const res = await api.tabs.sendMessage(tab.id, { type: 'overlay.open' });
         if (res && res.ok === false) throw new Error(res.error || '页面拒绝显示浮层');
       } catch (e) {
-        qrShot = null;
         throw new Error('这个页面不能框选（浏览器内部页面或未注入脚本），请改用截图粘贴');
       }
-      return { tabId: tab.id };
+      return { handled: false, needsPick: true };
     },
 
-    /* 浮层框选完成 → 只解码这一块 */
+    /* 用户框好了 → 重新截屏（此时浮层已隐藏）→ 只解码这一块 */
     'overlay.crop': async ({ rect, viewport }) => {
-      if (!qrShot) {
-        try { const st = await api.storage.session.get('qrShot'); qrShot = st && st.qrShot; } catch (e) { /* ignore */ }
-      }
-      if (!qrShot) throw new Error('截图已失效，请重新点 ▣');
       if (!ensureDecoder()) throw new Error('二维码解码器未加载');
-      const text = await F2A.qr.decodeDataUrlRegion(qrShot, rect, viewport);
-      if (!text) return { noQr: true };
-      const parsed = parseScanned(text);
-      if (parsed.action === 'sync-join') return { needsOptions: '这是同步配对码，请到设置页「端到端同步」中导入。' };
-      if (parsed.action === 'restore') return { needsOptions: '这是加密备份文件，请到设置页的扫码导入里恢复。' };
-      const imported = await F2A.vault.importEntries(parsed.entries, { mode: 'merge' });
-      await updateBadge();
-      const res = { total: imported.total };
-      qrShot = null;
-      return { imported: parsed.entries.length, total: res.total, label: parsed.entries[0] && (parsed.entries[0].issuer || parsed.entries[0].account) || '' };
+      const dataUrl = await captureVisible();
+      const result = await decodeAndImport(dataUrl, rect, viewport);
+      if (!result.handled) return { noQr: true };
+      return result;
     },
+
+    'entry.parseOtpauth': async ({ uri }) => {
+      const parsed = parseScanned(String(uri || '').trim());
+      if (parsed.action === 'sync-join') throw new Error('这是同步配对码，请到设置页的「端到端同步」中导入');
+      return { ok: true, entries: parsed.entries };
+    },
+
+    /* ---- 扫码 / 粘贴 统一入口 ---- */
+    'scan.handle': async ({ text }) => parseScanned(String(text || '').trim()),
+
+    /* 截取当前标签页，回传 PNG data URL（调用方自己解码） */
+    'qr.capture': async () => ({ dataUrl: await captureVisible() }),
 
     /* ---- Passkey ---- */
     'passkey.generate': async () => {

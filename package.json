@@ -1,6 +1,6 @@
 {
   "name": "2fa-helper",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Offline TOTP vault browser extension with local snapshots, WebDAV & cloud backups, and login-page autofill.",
   "private": true,
   "type": "module",

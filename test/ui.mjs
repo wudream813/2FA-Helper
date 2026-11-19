@@ -336,7 +336,7 @@ console.log('✓ 自动填充：后台只回传验证码，不暴露密钥');
   console.log('✓ 免注册：WebDAV 预设一键填充、对象存储面板字段齐全');
 }
 
-/* ---------------- 扫描当前网页（页面内浮层框选） ---------------- */
+/* ---------------- 扫描当前网页（一次点击，或页面内框选） ---------------- */
 {
   const before = (await call({ type: 'vault.state' }, {})).data.entries.length;
   let captured = 0;
@@ -350,67 +350,88 @@ console.log('✓ 自动填充：后台只回传验证码，不暴露密钥');
   popup.close = () => { popupClosed++; };   // jsdom 的 close() 会真的把 window 弄坏
   assert.equal(contentListeners.length, 1, '浮层内容脚本应注册消息监听器');
 
+  const qrBtn = popup.document.getElementById('scanPageBtn');
+
+  /* --- 路径 A：页面上只有一个能认出的二维码 → 一次点击直接导入，连浮层都不出现 --- */
+  let decodeCalls = 0;
+  bg.win.F2A.qr.decodeDataUrlRegion = async () => {
+    decodeCalls++;
+    return 'otpauth://totp/OneClick:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=OneClick';
+  };
+  qrBtn.click();
+  await tick(400);
+  assert.equal(captured, 1, '应截一次当前页面的可见区域');
+  assert.equal(popupClosed, 1, '弹窗应自己关掉，把页面让出来');
+  assert.equal(page.document.getElementById('__f2a_overlay_host__'), null, '能直接认出时不该弹框选浮层');
+  const toastEl = page.document.getElementById('__f2a_overlay_toast__');
+  assert.ok(toastEl, '应在页面上显示结果提示');
+  assert.match(toastEl.textContent, /已导入 1 条：OneClick/);
+  let entries = (await call({ type: 'vault.state' }, {})).data.entries;
+  assert.equal(entries.length, before + 1, '一次点击就应导入成功');
+  assert.ok(entries.some((e) => e.issuer === 'OneClick'));
+
+  /* --- 路径 B：整屏认不出 → 页面上出现框选浮层 → 拖框 → 只解码那一块 --- */
+  bg.win.F2A.qr.decodeDataUrlRegion = async () => null;
+  qrBtn.disabled = false;
+  qrBtn.click();
+  await tick(400);
+  const host = page.document.getElementById('__f2a_overlay_host__');
+  assert.ok(host, '认不出时应直接在原页面盖一层浮层层');
+
   let decodedRect = null, viewport = null;
   bg.win.F2A.qr.decodeDataUrlRegion = async (shot, rect, vp) => {
     decodedRect = rect; viewport = vp;
     return 'otpauth://totp/FromOverlay:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=FromOverlay';
   };
-
-  popup.document.getElementById('scanPageBtn').click();
-  await tick(300);
-  assert.equal(captured, 1, '应截一次当前页面的可见区域');
-  const host = page.document.getElementById('__f2a_overlay_host__');
-  assert.ok(host, '应直接在原页面盖一层浮层（而不是新窗口）');
-  assert.equal(createdWindows.length, 0, '不应打开任何新窗口');
-  assert.equal(popupClosed, 1, '浮层出现后弹窗应自己关掉，把页面让出来');
-
-  // 反向拖动：从 (600,500) 拖到 (320,260)
   const fire = (type, x, y) => host.dispatchEvent(new page.MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
   fire('mousedown', 600, 500);
   fire('mousemove', 320, 260);
   fire('mouseup', 320, 260);
-  await tick(400);
+  await tick(500);
 
   assert.equal(JSON.stringify(decodedRect), JSON.stringify({ x: 320, y: 260, w: 280, h: 240 }),
     '应把框选区域换算成视口坐标（反向拖动也归一化）');
   assert.equal(JSON.stringify(viewport), JSON.stringify({ w: 1024, h: 768 }), '应带上视口尺寸，用于换算设备像素');
-  const after = (await call({ type: 'vault.state' }, {})).data.entries;
-  assert.equal(after.length, before + 1, '框选识别出的 otpauth 应被导入');
-  assert.ok(after.some((e) => e.issuer === 'FromOverlay'), '导入的条目应来自浮层框选');
-  assert.match(host.textContent, /已导入 1 条/, '浮层上应显示导入结果');
+  assert.equal(captured, 3, '框选时应重新截一次（浮层已隐藏，不会把自己截进去）');
+  entries = (await call({ type: 'vault.state' }, {})).data.entries;
+  assert.equal(entries.length, before + 2, '框选识别出的 otpauth 也应被导入');
+  assert.ok(entries.some((e) => e.issuer === 'FromOverlay'));
+  assert.equal(page.document.getElementById('__f2a_overlay_host__'), null, '完成后浮层应撤掉');
+  assert.match(page.document.getElementById('__f2a_overlay_toast__').textContent, /已导入 1 条：FromOverlay/);
 
-  await tick(1400);
-  assert.equal(page.document.getElementById('__f2a_overlay_host__'), null, '成功后浮层应自动撤掉');
-
-  // 框里面没有二维码：提示后浮层保留，可以再框一次
+  /* --- 路径 C：框里没有二维码 → 提示，浮层已收起，可以再点一次 --- */
   bg.win.F2A.qr.decodeDataUrlRegion = async () => null;
-  popup.document.getElementById('scanPageBtn').disabled = false;  // 真机上弹窗已关闭，这里手动复位
-  popup.document.getElementById('scanPageBtn').click();
+  qrBtn.disabled = false;
+  qrBtn.click();
   await tick(300);
-  const host2 = page.document.getElementById('__f2a_overlay_host__');
-  const fire2 = (type, x, y) => host2.dispatchEvent(new page.MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
-  fire2('mousedown', 100, 100);
-  fire2('mouseup', 400, 400);
+  const host3 = page.document.getElementById('__f2a_overlay_host__');
+  const fire3 = (type, x, y) => host3.dispatchEvent(new page.MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+  fire3('mousedown', 100, 100);
+  fire3('mouseup', 400, 400);
   await tick(400);
-  assert.match(host2.textContent, /没有二维码/, '应提示这块区域没有二维码');
-  assert.ok(page.document.getElementById('__f2a_overlay_host__'), '失败时浮层应保留，允许重试');
+  assert.match(page.document.getElementById('__f2a_overlay_toast__').textContent, /没有二维码/);
 
-  // 太小的框直接忽略（防误触）
+  /* --- 太小的框忽略；Esc 取消 --- */
   let called = 0;
   bg.win.F2A.qr.decodeDataUrlRegion = async () => { called++; return null; };
-  fire2('mousedown', 50, 50);
-  fire2('mouseup', 53, 53);
+  qrBtn.disabled = false;
+  qrBtn.click();
+  await tick(300);
+  const host4 = page.document.getElementById('__f2a_overlay_host__');
+  const fire4 = (type, x, y) => host4.dispatchEvent(new page.MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+  const before2 = called;
+  fire4('mousedown', 50, 50);
+  fire4('mouseup', 53, 53);
   await tick(200);
-  assert.equal(called, 0, '过小的框不应触发解码');
-
-  // Esc 取消
+  assert.equal(called, before2, '过小的框不应触发解码');
   page.dispatchEvent(new page.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await tick(100);
   assert.equal(page.document.getElementById('__f2a_overlay_host__'), null, 'Esc 应撤掉浮层');
 
   assert.equal(JSON.stringify(page.__f2aOverlay.normalize({ x: 300, y: 200 }, { x: 100, y: 400 })),
     JSON.stringify({ x: 100, y: 200, w: 200, h: 200 }), 'normalize 应把反向拖动变成正矩形');
-  console.log('✓ 网页扫码：原页面浮层框选 → 只解码框住的一块 → 导入成功并自动撤掉；空选区/过小选区/Esc 都有处理');
+  assert.equal(createdWindows.length, 0, '全程不应打开任何新窗口');
+  console.log('✓ 网页扫码：单码时一次点击直接导入（无浮层）；认不出时页面内框选、只解码框住的一块；空选区/过小/Esc 都有处理');
 }
 
 /* ---------------- Passkey ---------------- */
