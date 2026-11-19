@@ -204,7 +204,7 @@
         const strong = document.createElement('b');
         strong.textContent = '点一下就能连 —— 已内置客户端 ID，不用去任何地方注册。';
         const small = document.createElement('span');
-        small.textContent = '直接点下面的「' + (p.connectLabel || '连接') + '」登录授权即可。如果你是开发者、想用自己的应用，把「客户端 ID」换成你自己的（下方蓝色回调地址要加到你自己的应用里）。';
+        small.textContent = '直接点下面的「' + (p.connectLabel || '连接') + '」登录授权即可。备份只会写进你自己的网盘，扩展没有任何服务器，开发者看不到你的任何数据。想用自己的应用，把「客户端 ID」换成你自己的（下方蓝色回调地址要加到你自己的应用里）。';
         note.append(strong, small);
         panel.appendChild(note);
       }
