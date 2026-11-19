@@ -55,8 +55,19 @@
     onedrive: '5a7712eb-cd4c-4920-8893-073538113163',
   };
 
+  /* 少数厂商（Google 的「Web 应用」客户端）在换 token 时强制要求 client_secret。
+     这类 secret 对公开客户端并不具备保密性（安装包人人可解），但仍建议留空、
+     让用户填自己的；只有你确认要「给所有人一键连接」时才填这里。 */
+  const BUILTIN_SECRETS = {
+    gdrive: '',
+    dropbox: '',
+  };
+
   /** 该渠道内置的公开客户端 ID（没有则返回空串）。 */
   function builtinClient(id) { return BUILTIN_CLIENTS[id] || ''; }
+
+  /** 该渠道内置的（非机密）客户端密钥，没有则空串。 */
+  function builtinSecret(id) { return BUILTIN_SECRETS[id] || ''; }
 
   const SCOPES = {
     gdrive: 'https://www.googleapis.com/auth/drive.file',
@@ -178,7 +189,7 @@
         grant_type: 'authorization_code',
         redirect_uri: redirectUrl(),
       });
-      const secret = secrets.gdriveSecret || cfg.clientSecret;
+      const secret = secrets.gdriveSecret || cfg.clientSecret || builtinSecret('gdrive');
       if (secret) body.set('client_secret', secret);
       const { json } = await fetchJson('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -202,7 +213,7 @@
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       });
-      const secret = secrets.gdriveSecret || settings.providers.gdrive.clientSecret;
+      const secret = secrets.gdriveSecret || settings.providers.gdrive.clientSecret || builtinSecret('gdrive');
       if (secret) body.set('client_secret', secret);
       const { json } = await fetchJson('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -853,7 +864,7 @@
     providers: {
       META, SCOPES, WEBDAV_PRESETS, S3_PRESETS,
       list: () => Object.values(META), connect, disconnect, isConnected, upload, download, test, redirectUrl, webdav, s3, folder,
-      BUILTIN_CLIENTS, builtinClient,
+      BUILTIN_CLIENTS, builtinClient, BUILTIN_SECRETS, builtinSecret,
     },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

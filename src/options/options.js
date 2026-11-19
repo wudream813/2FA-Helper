@@ -28,6 +28,13 @@
   }
 
   /* ================= providers ================= */
+  /** 渠道的「成本」：OAuth 渠道只要在 lib/providers.js 的 BUILTIN_CLIENTS 里填了 ID，
+      就自动变成「已内置」—— 填一行 ID 即生效，不用改别处。 */
+  function costOf(p) {
+    if (p.kind !== 'oauth') return 'free';
+    return F2A.providers && F2A.providers.builtinClient && F2A.providers.builtinClient(p.id) ? 'builtin' : 'oauth';
+  }
+
   const PROVIDERS = [
     {
       id: 'none', label: '不启用', kind: 'none', cost: 'free',
@@ -65,7 +72,7 @@
     {
       id: 'gdrive', label: 'Google Drive', kind: 'oauth', cost: 'oauth',
       fields: [
-        { key: 'clientId', label: 'Client ID', placeholder: 'xxxx.apps.googleusercontent.com', wide: true },
+        { key: 'clientId', label: 'Client ID', placeholder: 'xxxx.apps.googleusercontent.com', wide: true, builtin: true },
         { key: 'clientSecret', label: 'Client Secret', type: 'password', secret: 'gdriveSecret', placeholder: '可留空（PKCE）' },
         { key: 'filePath', label: '云端文件名', placeholder: '2fa-helper-backup.json' },
       ],
@@ -74,7 +81,7 @@
     {
       id: 'dropbox', label: 'Dropbox', kind: 'oauth', cost: 'oauth',
       fields: [
-        { key: 'appKey', label: 'App key', placeholder: 'abcd1234efgh', wide: true },
+        { key: 'appKey', label: 'App key', placeholder: 'abcd1234efgh', wide: true, builtin: true },
         { key: 'filePath', label: '云端路径', placeholder: '/2FA-Helper/backup.json' },
       ],
       connectLabel: '连接 Dropbox',
@@ -106,9 +113,10 @@
       b.className = 'provider-tab' + (p.id === activeTab ? ' active' : '');
       b.appendChild(document.createTextNode(p.label));
       if (p.id !== 'none') {
+        const costKind = costOf(p);
         const cost = document.createElement('span');
-        cost.className = 'cost' + (p.cost === 'oauth' ? ' oauth' : p.cost === 'builtin' ? ' builtin' : '');
-        cost.textContent = p.cost === 'oauth' ? '需注册' : p.cost === 'builtin' ? '已内置' : '免注册';
+        cost.className = 'cost' + (costKind === 'oauth' ? ' oauth' : costKind === 'builtin' ? ' builtin' : '');
+        cost.textContent = costKind === 'oauth' ? '需注册' : costKind === 'builtin' ? '已内置' : '免注册';
         b.appendChild(document.createTextNode(' '));
         b.appendChild(cost);
       }

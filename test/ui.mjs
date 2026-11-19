@@ -194,6 +194,22 @@ console.log('✓ 设置页：7 个渠道标签，4 个「免注册」+ 1 个「�
   const redirect = panel.querySelector('.redirect-box .url');
   assert.match(redirect.textContent, /^https:\/\/[a-z0-9-]+\.chromiumapp\.org\/$/, '回调地址形状应为 https://<扩展ID>.chromiumapp.org/');
   console.log('✓ 一键连接：OneDrive 预填内置客户端 ID、显示提示、回调地址正确');
+
+  // 往 BUILTIN_CLIENTS 里填一个 Google ID，UI 应当自动变成「已内置」并预填 —— 证明「填一行即生效」
+  const OptF2A = opt.window.F2A;
+  OptF2A.providers.BUILTIN_CLIENTS.gdrive = 'demo.apps.googleusercontent.com';
+  opt.document.querySelectorAll('.provider-tab')[0].click();
+  await tick(150);
+  const gTab = [...opt.document.querySelectorAll('.provider-tab')].find((t) => t.textContent.includes('Google'));
+  assert.match(gTab.textContent, /已内置/, 'BUILTIN_CLIENTS 填了 ID 后 Google 应自动变「已内置」');
+  gTab.click();
+  await tick(200);
+  const gPanel = [...opt.document.querySelectorAll('.panel')].find((p) => p.classList.contains('active'));
+  assert.ok(gPanel.querySelector('.builtin-note'), '应出现「点一下就能连」提示');
+  const gInput = [...gPanel.querySelectorAll('input')].find((i) => i.value === 'demo.apps.googleusercontent.com');
+  assert.ok(gInput, 'Client ID 应预填内置值');
+  delete OptF2A.providers.BUILTIN_CLIENTS.gdrive;
+  console.log('✓ 可扩展：BUILTIN_CLIENTS 填一行 ID，Google Drive 即变「已内置」并预填');
 }
 assert.equal($o('cryptBadge').textContent, '未加密');
 assert.equal(opt.document.querySelectorAll('.provider-tab').length, 7, '渠道标签数量应为 7');

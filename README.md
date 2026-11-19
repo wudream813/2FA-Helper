@@ -171,6 +171,36 @@ npm run test:all       # 全部
 
 > 每个浏览器的扩展 ID 不同（Firefox 是 `https://<uuid>.extensions.allizom.org/`），换浏览器要为新地址重复「填回调地址」这一步，或者干脆把多个地址都加进平台的白名单。
 
+#### Google Drive（想让所有人都「点一下就连」？先读这段）
+
+Google 和微软不一样，**它的「Web 应用」客户端在换 token 时强制要求 `client_secret`**（微软允许纯 PKCE 不带密钥）。而扩展是公开客户端，包里放任何东西都会被看到 —— 所以「内置 Google 客户端」这件事要你知情后再决定：
+
+| 做法 | 效果 | 代价 |
+| --- | --- | --- |
+| **A. 内置 ID + 内置 secret**（本项目支持：`BUILTIN_CLIENTS.gdrive` + `BUILTIN_SECRETS.gdrive`） | 用户点一下就通，和 OneDrive 一样 | 这个 secret 对全世界可见（不算真正的机密），要接受它被滥用/被 Google 盯上的风险；建议只在自用或小范围分发时这么做 |
+| **B. 不内置，用户自己填** | 零风险 | 每个用户都要注册一次（见下） |
+| **C. 上架 Chrome Web Store 后用「Chrome 扩展程序」类型客户端** | 无 secret、绑定商店 ID | 只在商店安装时可用，Firefox / Edge 侧载都不适用 |
+
+**如果你选 A，把 ID 和 secret 填到这里就生效（一行一个，UI 会自动变成「已内置」并预填）：**
+
+```js
+// src/lib/providers.js
+const BUILTIN_CLIENTS = { gdrive: 'xxxxx.apps.googleusercontent.com', dropbox: '', onedrive: '…' };
+const BUILTIN_SECRETS = { gdrive: 'GOCSPX-xxxxx', dropbox: '' };
+```
+
+**注册步骤（选 B 或准备 A 的凭据都要走一遍）：**
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → 新建项目 → 「API 和服务」→ 库 → 启用 **Google Drive API**
+2. 「Google Auth Platform」→ **品牌**：应用名、支持邮箱、开发者邮箱；用户类型选 **外部**
+3. **数据访问**：添加范围 `https://www.googleapis.com/auth/drive.file`（**非敏感**范围，不需要安全评估/CASA）
+4. **客户端** → 创建客户端 ID → 类型 **Web 应用** → 「已获授权的重定向 URI」填
+   `https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/`（结尾斜杠不能少）
+5. **目标对象 / Audience** → **发布应用（In production）** ← **这一步千万别漏**，留在「测试」状态下 Google 只给 **7 天** 的 refresh token，备份会每周断一次
+6. 复制 **客户端 ID** 和 **客户端密钥**（secret 只有 A 方案需要，B 方案里用户自己填）
+
+> 只声明 `drive.file` 时，应用只能看到**自己创建的**文件，不会碰到你 Drive 里的其他东西，这也是它能免掉「受限范围审核」的原因。
+
 #### Google Drive
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → 新建项目 → 「API 和服务」→ 启用 **Google Drive API**

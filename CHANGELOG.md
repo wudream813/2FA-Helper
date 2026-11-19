@@ -1,5 +1,13 @@
 # 更新日志
 
+## v1.3.1 — 2026-11-18
+
+- **「内置客户端」变成一行配置**：`BUILTIN_CLIENTS` / `BUILTIN_SECRETS` 里填了 ID，设置页的徽标自动从「需注册」变「已内置」，客户端 ID 自动预填 —— Google Drive、Dropbox 都能这样开启，不用改 UI 代码
+- 新增 `BUILTIN_SECRETS`：应付 Google「Web 应用」客户端换 token 必须带 `client_secret` 的限制（微软那边是纯 PKCE，不需要）
+- README 新增「Google Drive 一键连接」三条路线对比（内置 ID+secret / 用户自填 / 上架商店用 Chrome 扩展客户端），并标注 Google 的 **7 天 refresh token** 陷阱（必须把发布状态改成 In production）
+- 测试：`test/providers.mjs` 20 项（+1，验证内置 ID+secret 时授权 URL 只申请 `drive.file`、带 PKCE、带 `access_type=offline`，token 交换带 `client_secret`）；`test/ui.mjs` 新增「填一行 ID 后 Google 自动变『已内置』并预填」
+
+
 ## v1.3.0 — 2026-11-18
 
 **主题：OneDrive 变成「点一下就能连」。**

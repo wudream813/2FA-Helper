@@ -314,6 +314,44 @@ await test('用户自己填了 Client ID 时以用户的为准', async () => {
   assert.match(authUrl, /client_id=mine/);
 });
 
+await test('Google：内置 ID + 内置 secret 时也能一键连（secret 只从代码里取）', async () => {
+  await F2A.vault.setSecrets({ tokens: { gdrive: { access_token: '', refresh_token: '', expiry: 0 } }, gdriveSecret: '' });
+  await F2A.vault.setSettings({ providers: { gdrive: { clientId: '', filePath: '2fa-helper-backup.json' } } });
+  P.BUILTIN_CLIENTS.gdrive = 'demo.apps.googleusercontent.com';
+  P.BUILTIN_SECRETS.gdrive = 'demo-secret';
+  let authUrl = '';
+  let tokenBody = '';
+  const prevFlow = globalThis.chrome.identity.launchWebAuthFlow;
+  const prevFetch = globalThis.fetch;
+  globalThis.chrome.identity.launchWebAuthFlow = async ({ url }) => {
+    authUrl = url;
+    return 'https://test-id.chromiumapp.org/?code=c';
+  };
+  globalThis.fetch = async (u, o = {}) => {
+    if (String(u) === 'https://oauth2.googleapis.com/token') {
+      tokenBody = String(o.body);
+      return new Response(JSON.stringify({ access_token: 'g-new', refresh_token: 'gr', expires_in: 3600 }), { status: 200 });
+    }
+    return prevFetch(u, o);
+  };
+  try {
+    await P.connect('gdrive').catch((e) => { throw e; });
+    assert.match(authUrl, /client_id=demo\.apps\.googleusercontent\.com/);
+    assert.match(authUrl, /scope=https%3A%2F%2Fwww\.googleapis\.com%2Fauth%2Fdrive\.file/, '只申请 drive.file（非敏感范围）');
+    assert.match(authUrl, /code_challenge_method=S256/, '仍然使用 PKCE');
+    assert.match(authUrl, /access_type=offline/, '要 refresh token 才能定时备份');
+    assert.match(tokenBody, /client_secret=demo-secret/, 'Google 的 Web 客户端换 token 需要 secret');
+    assert.match(tokenBody, /code_verifier=/, 'PKCE verifier 必须随请求提交');
+  } finally {
+    globalThis.fetch = prevFetch;
+    globalThis.chrome.identity.launchWebAuthFlow = prevFlow;
+    delete P.BUILTIN_CLIENTS.gdrive;
+    delete P.BUILTIN_SECRETS.gdrive;
+    // 恢复后续用例依赖的 fixture
+    await F2A.vault.setSettings({ providers: { gdrive: { clientId: 'client.apps.googleusercontent.com', filePath: '2fa-helper-backup.json' } } });
+  }
+});
+
 console.log('\n错误处理');
 await test('远程 404 时提示先备份', async () => {
   globalThis.fetch = async (u) => {

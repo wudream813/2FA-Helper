@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "2FA Helper",
   "short_name": "2FA Helper",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAupsIsH1KFxww02t1w9CujM2jL+PrzEChFuQS2HREM/p/9vC4u3RyiOmZlU5cAROWHcaVXQmjI61pzjGMTLi/Dvx6i9frG28f8a9g8M4jTQXUEHcQ4a7SLicNeI0aGvOrX6oFNyQffLrYznvl1f3hXleytlvrMIftBdaBIk8uH8sLY5nA4Ld6+e3Nb2akRUyU7BDvOAAiSMF9tsDqUuV0cpgcVqyiXoH6ow6WaHyAmp8Tq5cw2mXI+rC3SMVm1og0oB5lPPz1RIlxZirINVJPzFmHEbswUCiiE0kaASPDEMrwS6Uw7BtOxcM+ck5CtuqQuaX9qZdS6VGPDUKYoxODBQIDAQAB",
   "description": "离线 TOTP 保管库：本地快照、WebDAV/网盘加密备份、端到端同步、扫码导入、Passkey 存放与自动填充。",
   "minimum_chrome_version": "102",
