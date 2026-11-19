@@ -39,9 +39,9 @@ npm run test:all       # 全部
 
 | 文件 | 用于 |
 | --- | --- |
-| `2fa-helper-chromium-1.2.0.zip` | Chrome / Chromium / Brave / Vivaldi |
-| `2fa-helper-edge-1.2.0.zip` | Edge（与 chromium 包内容相同，同用 MV3 manifest） |
-| `2fa-helper-firefox-1.2.0.zip` | Firefox |
+| `2fa-helper-chromium-1.2.1.zip` | Chrome / Chromium / Brave / Vivaldi |
+| `2fa-helper-edge-1.2.1.zip` | Edge（与 chromium 包内容相同，同用 MV3 manifest） |
+| `2fa-helper-firefox-1.2.1.zip` | Firefox |
 
 **方式二：自己构建，用开发者模式加载**
 
@@ -52,7 +52,7 @@ npm run test:all       # 全部
 | **Edge** | `edge://extensions` → 左侧「开发人员模式」→「加载解压缩的扩展」→ 选 `release/edge` |
 | **Firefox** | `about:debugging#/runtime/this-firefox` →「临时载入附加组件」→ 选 `release/firefox/manifest.json` |
 
-> Firefox 也可以直接用 `release/2fa-helper-firefox-1.2.0.zip` 在 `about:addons` → 齿轮 → 「从文件安装附加组件」中安装（需要先用 `web-ext sign` 或关闭签名校验的开发版）。
+> Firefox 也可以直接用 `release/2fa-helper-firefox-1.2.1.zip` 在 `about:addons` → 齿轮 → 「从文件安装附加组件」中安装（需要先用 `web-ext sign` 或关闭签名校验的开发版）。
 > Firefox 的 MV3 里 host 权限默认不授予：装好后请到 `about:addons` → 2FA Helper → **权限** → 勾选「访问所有网站的数据」，否则网页自动填充与 WebDAV 请求会被拦截。
 
 ### 第一步：加一个账户
@@ -185,14 +185,61 @@ npm run test:all       # 全部
 3. Redirect URIs 填同一个回调地址
 4. 把 **App key** 粘进扩展 →「连接 Dropbox」（PKCE，不需要 App secret）
 
-#### OneDrive
+#### OneDrive / Microsoft 365（手把手，约 3 分钟）
 
-1. [Azure 门户](https://portal.azure.com/) →「应用注册」→ 新注册（「个人 Microsoft 账户」+ 工作/学校）
-2. 「身份验证」→ 添加平台 → **Web** → 重定向 URI 填回调地址；同时打开「允许公共客户端流」
-3. 「API 权限」→ Microsoft Graph → 委托的权限 → `Files.ReadWrite.AppFolder`
-4. 复制「应用程序(客户端)ID」到扩展 →「连接 OneDrive」
+我们的扩展用**授权码 + PKCE、不带客户端密钥**的公开客户端流程，所以 Azure 里只需要「注册 → 填一条回调地址 → 加一个权限」三件事，**不需要生成密码/证书**。
 
-备份写入应用专属的 **App Folder**（`应用名/2fa-helper-backup.json`），不碰你其他文件。
+**1. 打开门户**
+
+https://portal.azure.com → 左上角搜索 **Microsoft Entra ID**（旧名 Azure AD）→ 左侧 **应用注册** → 顶部 **＋ 新注册**。
+
+> 个人 Microsoft 账户也能用 Azure 门户，用同一个账号登录即可；不需要订阅、不需要信用卡。
+
+**2. 填写注册表单**
+
+| 字段 | 填什么 |
+| --- | --- |
+| 名称 | `2FA Helper 自用`（随便，只你自己看得见） |
+| 受支持的账户类型 | **「任何组织目录中的账户和个人 Microsoft 账户」**（第三项）。只用个人账户的话也可以选第二项「仅个人 Microsoft 账户」，但那之后设置页的「租户」要改成 `consumers` |
+| 重定向 URI | 平台下拉选 **「单页应用程序 (SPA)」**，地址填下面这一条 |
+
+```
+https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/
+```
+
+这条地址是**固定的**：本项目的 manifest 里内置了 `key`，所以不论是 Chrome、Edge 还是 Brave/Vivaldi，只要装的是 `release/` 里的这份代码，扩展 ID 就永远是 `ahkfbinhhpfhjdmogafkgfecajfldmal`。
+
+> **Firefox 用户**：Firefox 的回调地址长得不一样（`https://<uuid>.extensions.allizom.org/`）。打开扩展的**设置页 → OneDrive 面板**，顶部那行等宽字就是你的地址，点旁边「复制」，然后在同一个应用的「重定向 URI」里**再加一条**（同样选 SPA）即可。两个浏览器共用一个应用没问题。
+
+点 **注册**。
+
+**3. 允许公开客户端流程（保险起见）**
+
+左侧 **身份验证** → 拉到最下面 **高级设置** → **允许公共客户端流** 选 **是** → **保存**。
+（我们走的是 PKCE，理论上不需要，但部分租户策略会拦，勾上不会有副作用。）
+
+**4. 加一个权限**
+
+左侧 **API 权限** → **＋ 添加权限** → **Microsoft Graph** → **委托的权限** → 搜索 `Files.ReadWrite.AppFolder` → 勾选 → **添加权限**。
+
+- 只要这一个权限。**不要**加 `User.Read`、`Files.ReadWrite.All` 之类的；
+- 因此本扩展的授权页**不会**要求「读取你的个人资料」，也不会要求访问你网盘里其他文件 —— 它只能看见自己创建的 `应用名/2fa-helper-backup.json`；
+- 个人账户的同意页面直接点「接受」即可；如果是公司/学校租户且管理员限制了用户同意，需要管理员点 **「代表 <租户> 授予管理员同意」**。
+
+**5. 把客户端 ID 粘进扩展**
+
+左侧 **概述** → 复制 **应用程序(客户端) ID**（形如 `0a1b2c3d-....`，不是「对象 ID」，也不是密钥）→ 粘进扩展设置页 OneDrive 面板 → 点 **连接 OneDrive** → 用你的微软账号登录并接受。
+
+看到「连接正常」就成了。之后令牌存在本地，过期自动用 refresh token 续期；「断开授权」会清掉本地令牌（想彻底撤销就去 https://microsoft.com/consent）。
+
+**常见报错**
+
+| 报错 | 原因 |
+| --- | --- |
+| `AADSTS50011` / redirect URI mismatch | 回调地址不是逐字一致：少了结尾的 `/`、选错了平台类型（必须是 **SPA**，不是 Web），或者你装的是自己改过代码、扩展 ID 变了的版本 |
+| `AADSTS65005` / invalid scope | 权限加在了「应用程序权限」而不是「委托的权限」 |
+| `AADSTS7000218` / client_secret required | 回调地址注册在 **Web** 平台下了。改成 SPA 平台（Web 平台要求密钥，公开客户端用不了） |
+| `AADSTS50020` / account does not exist in tenant | 账户类型选了「仅此组织目录」，但你在用个人账户登录。改成「任何组织目录…和个人 Microsoft 账户」，或把设置页的租户改成 `consumers` |
 
 ---
 

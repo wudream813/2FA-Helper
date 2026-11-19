@@ -1,5 +1,12 @@
 # 更新日志
 
+## v1.2.1 — 2026-11-18
+
+- **固定 Chromium 扩展 ID**（manifest 内置 `key`）：扩展 ID 恒为 `ahkfbinhhpfhjdmogafkgfecajfldmal`，回调地址恒为 `https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/`，OAuth 重定向 URI 只需注册一次
+- README 新增「在 Azure 注册 OneDrive 应用（手把手，约 3 分钟）」：账户类型怎么选、平台必须选 **SPA**（选 Web 会要求 client_secret）、只要一个 `Files.ReadWrite.AppFolder` 权限、Firefox 回调地址怎么加第二条，以及 `AADSTS50011 / 65005 / 7000218 / 50020` 四类报错对照表
+
+> 注意：扩展 ID 变了，等于一个新的扩展实例。如果你已经装过旧版本并录入过账户，先「导出文件」备份，换新版后再导入。
+
 ## v1.2.0 — 2026-11-18
 
 **主题：网盘备份不再需要注册开发者应用。**
