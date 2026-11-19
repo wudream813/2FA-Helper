@@ -391,6 +391,11 @@ npx web-ext lint --source-dir release/firefox   # 目前 0 error / 0 warning
 
 ## 八、常见问题
 
+**为什么别的扩展点一下就能连 OneDrive，我这里没有那个按钮？**
+那个授权弹窗（例如抬头写着 Authenticator Backup / authenticator.cc 的那一个）是**那家开发者自己在 Azure 注册的应用**。OAuth 客户端必须由「发布者身份」注册，一个第三方扩展不能替别的扩展注册，也不能内置别人的 Client ID —— 所以我们不提供「一键连 OneDrive」。想连 OneDrive 又不想碰 OAuth，就用 **2.1 文件夹同步**：把浏览器的下载目录指到 OneDrive 的本地文件夹，备份文件会被桌面客户端自动带走，全程没有授权弹窗。
+
+> 顺带说一句：如果你看到别人的扩展弹出「对应用程序的文件夹具有完全访问权限 + 读取你的个人资料」，那是它注册的应用在向你的网盘要权限。其中「读取个人资料」是 Microsoft Graph 的 `User.Read` 默认项；文件夹权限若是 App Folder（`Files.ReadWrite.AppFolder`），它只能看到自己那个应用文件夹。授权随时可以在 https://microsoft.com/consent 撤销。
+
 **只想备份、完全不想注册任何东西**
 用「文件夹同步」：什么都不用填，备份直接落到下载目录，靠系统里的网盘客户端同步走（2.1）。想要更稳就用对象存储，生成一对 AccessKey/SecretKey 即可（2.2）。
 
