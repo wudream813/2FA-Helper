@@ -10,7 +10,7 @@
   - **WebDAV 网盘**：坚果云、Nextcloud、群晖、pCloud、Koofr、Yandex、InfiniCLOUD 预设一键填地址（AList 网关可挂百度网盘等任意网盘）
 - **知名网盘备份**：Google Drive、OneDrive、Dropbox（OAuth，需自建客户端，作为备选）
 - **端到端加密同步**：`storage.sync` 分片同步，云端只有 AES-GCM 密文（见第四节）
-- **二维码**：扫码导入（拖图 / 粘贴 / 摄像头）+ 为每个条目生成二维码
+- **二维码**：一键扫描**当前网页**上的二维码（弹窗 ▣ 按钮）+ 拖图 / 粘贴 / 摄像头导入，并能为每个条目生成二维码
 - **Passkey / WebAuthn 记录**：加密存放、展示、二维码与 JSON 迁移（见第三节的边界说明）
 - **登录页自动填充**：识别验证码输入框，点一下填入
 - 可选主密码加密：本地存储与云端备份文件均为 AES-256-GCM 密文
@@ -329,7 +329,11 @@ https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/
 
 ### 3.1 扫码导入
 
-设置页 →「二维码扫码导入」，三种入口：
+**最快的入口：扫当前网页。** 点工具栏图标打开弹窗 → 按左上角 **▣** → 自动截取当前标签页、识别二维码、直接导入。常用于服务商「开启两步验证」那个二维码页面，不用截图也不用保存图片。
+
+> 只截**当前可见区域**：二维码在页面下方就先滚到能看见的位置。截屏需要 `activeTab` 权限，仅在你点这个按钮时生效。
+
+设置页 →「二维码扫码导入」，另外还有三种入口：
 
 | 方式 | 说明 |
 | --- | --- |
@@ -452,6 +456,7 @@ https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/
 | `identity` | 云盘 OAuth 授权 |
 | `downloads` | 「导出文件」、定期导出，以及**文件夹同步**写入下载目录 |
 | `permissions` | 首次使用 WebDAV / S3 时按站点动态申请权限（可选权限，不是全局授权） |
+| `activeTab` | 只在你点弹窗里的 **▣**（扫当前网页）时授予，用来截一张当前标签页的图；不会常驻，也读不到历史记录 |
 | `content_scripts`（全部站点） | 登录页验证码自动填充，可在设置里一键关闭 |
 | `host_permissions`（仅云盘 API 域名） | Google / Dropbox / Microsoft 接口 |
 | 摄像头（运行时询问，不进 manifest） | 扫码导入；不授权也能用拖图/粘贴 |
@@ -514,6 +519,7 @@ npx web-ext lint --source-dir release/firefox   # 目前 0 error / 0 warning
 - **渠道**：WebDAV 用真实 HTTP 服务器验证 MKCOL/PUT/GET 与 Basic 认证；Google Drive 校验 multipart 创建与 PATCH 更新两条路径；Dropbox 校验 `Dropbox-API-Arg`；OneDrive 校验 App Folder 路径；错误状态写入
 - **同步**：给假的 `storage.sync` 加上和 Chrome 一模一样的配额（单项 8 KB / 总量 100 KB / 512 项），验证分片写入、密文不含明文、两台「设备」配对往返、配对码错误回滚、分片篡改被拦、多分片清理、超配额报错、幂等推送与回声抑制
 - **二维码**：编码→解码往返（otpauth / 迁移包 / passkey / 配对码四种载荷，含 2px 低分辨率与 H 级纠错），并与 Python `qrcode` 库生成的图做**独立实现交叉验证**；还校验 `toCanvas` 的绘制结果与模块矩阵一致
+- **网页扫码**：截屏 → 解码 → 导入链路（用真实的 `qr.capture` 路由 + `scan.handle` 分派，像素解码在 jsdom 里打桩），以及识别失败时的提示文案
 - **UI**：在 jsdom 里启动真实 background.js + 真实弹窗/设置页，7 个渠道标签与「免注册/需注册」标注、WebDAV 预设一键填地址、S3 面板字段齐全，再完成「加账户 → 显示正确验证码 → 搜索 → 开加密 → 锁屏 → 错误密码 → 正确密码解锁 → 域名匹配填充 → 建 Passkey → 详情页 → 扫码载荷分派 → 启用同步并生成配对码」全流程
 
 ---

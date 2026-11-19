@@ -27,6 +27,7 @@
     <header class="topbar">
       <div class="brand"><span class="dot"></span>2FA Helper</div>
       <div class="toolbar">
+        <button id="scanPageBtn" class="icon-btn" title="扫描当前网页里的二维码">▣</button>
         <button id="addBtn" class="icon-btn" title="添加账户 / Passkey">＋</button>
         <button id="lockBtn" class="icon-btn" title="锁定">🔒</button>
         <button id="settingsBtn" class="icon-btn" title="设置">⚙</button>
@@ -174,6 +175,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="../vendor/qrcode.js"></script>
+  <script src="../vendor/jsqr.js"></script>
   <script src="../lib/util.js"></script>
   <script src="../lib/totp.js"></script>
   <script src="../lib/qr.js"></script>

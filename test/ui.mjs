@@ -70,6 +70,11 @@ function makeChrome(opts = {}) {
     identity: { getRedirectURL: () => 'https://test-extension-id.chromiumapp.org/' },
     permissions: { async contains() { return true; }, async request() { return true; } },
     downloads: { async download() { return 1; } },
+    tabs: {
+      // 真实实现会截当前标签页；测试里返回一个合法 PNG data URL 前缀即可，
+      // 真正的像素解码在下面被 stub 掉（jsdom 没有 canvas）。
+      async captureVisibleTab() { return 'data:image/png;base64,iVBORw0KGgo='; },
+    },
   };
 }
 
@@ -119,7 +124,7 @@ console.log('✓ background.js 启动，消息监听器已注册');
 console.log('  badge text:', JSON.stringify(storeLocal.size), 'storage keys');
 
 /* ---------------- popup ---------------- */
-const { win: popup } = boot({ html: 'popup/popup.html', scripts: ['lib/util.js', 'lib/totp.js', 'popup/popup.js'] });
+const { win: popup } = boot({ html: 'popup/popup.html', scripts: ['vendor/jsqr.js', 'lib/util.js', 'lib/totp.js', 'lib/qr.js', 'popup/popup.js'] });
 await tick(300);
 
 const $ = (id) => popup.document.getElementById(id);
@@ -312,6 +317,43 @@ console.log('✓ 自动填充：后台只回传验证码，不暴露密钥');
   const s3Fields = [...s3Panel.querySelectorAll('input')].length;
   assert.ok(s3Fields >= 5, '对象存储应有 endpoint/region/bucket/keyPath/accessKey/secretKey 字段');
   console.log('✓ 免注册：WebDAV 预设一键填充、对象存储面板字段齐全');
+}
+
+/* ---------------- 扫描当前网页 ---------------- */
+{
+  const before = (await call({ type: 'vault.state' }, {})).data.entries.length;
+  let captured = 0;
+  // background 用的是它自己那个 window 的 chrome 对象
+  bg.win.chrome.tabs.captureVisibleTab = async () => { captured++; return 'data:image/png;base64,iVBORw0KGgo='; };
+  // jsdom 没有 canvas：把「解码」这一步换成固定结果，验证 wiring（截屏 → 解码 → 导入）
+  const qr = popup.F2A.qr;
+  const realGrab = qr.grabImageData, realDecode = qr.decodeImageData;
+  qr.grabImageData = () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 });
+  qr.decodeImageData = () => 'otpauth://totp/WebScan%20Demo:me%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=WebScan%20Demo';
+  // jsdom 在没有 canvas 依赖时不会真的解码 data URL，这里给 Image 一个立刻 onload 的替身
+  const RealImage = popup.Image;
+  popup.Image = class {
+    constructor() { this.onload = null; this.onerror = null; }
+    set src(v) { this._src = v; setTimeout(() => this.onload && this.onload(), 0); }
+    get src() { return this._src; }
+  };
+
+  popup.document.getElementById('scanPageBtn').click();
+  await tick(400);
+  assert.equal(captured, 1, '应调用一次 captureVisibleTab');
+  const after = (await call({ type: 'vault.state' }, {})).data.entries;
+  assert.equal(after.length, before + 1, '扫到的 otpauth 应被导入');
+  assert.ok(after.some((e) => e.issuer === 'WebScan Demo'), '导入的条目应来自网页二维码');
+
+  // 没识别到二维码时给出可读提示
+  qr.decodeImageData = () => null;
+  popup.document.getElementById('scanPageBtn').click();
+  await tick(300);
+  assert.match(popup.document.getElementById('toast').textContent, /没找到二维码/);
+  qr.grabImageData = realGrab;
+  qr.decodeImageData = realDecode;
+  popup.Image = RealImage;
+  console.log('✓ 网页扫码：截屏 → 解码 → 导入成功；识别不到时提示文案可读');
 }
 
 /* ---------------- Passkey ---------------- */

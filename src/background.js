@@ -140,6 +140,25 @@
     /* ---- 扫码 / 粘贴 统一入口 ---- */
     'scan.handle': async ({ text }) => parseScanned(String(text || '').trim()),
 
+    /* 截取当前标签页并回传 PNG data URL —— 由弹窗解码（弹窗才有 canvas） */
+    'qr.capture': async () => {
+      const tabsApi = api.tabs;
+      if (!tabsApi || typeof tabsApi.captureVisibleTab !== 'function') {
+        throw new Error('当前浏览器不支持截取页面');
+      }
+      let dataUrl;
+      try {
+        dataUrl = await tabsApi.captureVisibleTab(null, { format: 'png' });
+      } catch (e) {
+        const msg = String((e && e.message) || e);
+        if (/permission|denied|activeTab/i.test(msg)) throw new Error('没有截取页面的权限，请把二维码截图后粘贴进来');
+        if (/chrome:|edge:|about:|extension:\/\//i.test(msg)) throw new Error('无法截取浏览器内部页面');
+        throw new Error('截取当前页面失败：' + msg);
+      }
+      if (!dataUrl || String(dataUrl).indexOf('data:image/') !== 0) throw new Error('截取当前页面失败');
+      return { dataUrl };
+    },
+
     /* ---- Passkey ---- */
     'passkey.generate': async () => {
       const pair = await root.crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
