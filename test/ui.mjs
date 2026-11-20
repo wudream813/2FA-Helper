@@ -336,6 +336,52 @@ console.log('✓ 自动填充：后台只回传验证码，不暴露密钥');
   console.log('✓ 免注册：WebDAV 预设一键填充、对象存储面板字段齐全');
 }
 
+/* ---------------- 批量粘贴（一次多条 otpauth） ---------------- */
+{
+  const T = (issuer, account, secret) =>
+    `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
+  const before = (await call({ type: 'vault.state' }, {})).data.entries.length;
+
+  popup.document.getElementById('importText').value = [
+    T('BatchA', 'a@x.com', 'JBSWY3DPEHPK3PXP'),
+    T('BatchB', 'b@x.com', 'KRSXG5CTMVRXEZLU'),
+    T('BatchC', 'c@x.com', 'GEZDGNBVGY3TQOJQ'),
+  ].join('\n');
+  popup.document.getElementById('importBtn').click();
+  await tick(500);
+  const result = popup.document.getElementById('importResult').textContent;
+  assert.match(result, /成功导入 3 条/, '一次粘贴三条应全部导入，实际：' + result);
+  const entries = (await call({ type: 'vault.state' }, {})).data.entries;
+  assert.equal(entries.length, before + 3);
+  assert.equal(JSON.stringify(entries.filter((e) => /^Batch/.test(e.issuer)).map((e) => e.issuer).sort()),
+    JSON.stringify(['BatchA', 'BatchB', 'BatchC']), '三条都应在库里');
+
+  /* 重复粘贴同一批 → 全部跳过，库存不涨 */
+  popup.document.getElementById('importText').value = [
+    T('BatchA', 'a@x.com', 'JBSWY3DPEHPK3PXP'),
+    T('BatchB', 'b@x.com', 'KRSXG5CTMVRXEZLU'),
+  ].join('\n');
+  popup.document.getElementById('importBtn').click();
+  await tick(400);
+  assert.match(popup.document.getElementById('importResult').textContent, /跳过 2 条重复/);
+  assert.equal((await call({ type: 'vault.state' }, {})).data.entries.length, before + 3);
+  await tick(1100); // 等上一次成功导入的「自动关窗」计时器走完，避免干扰下一段
+
+  /* 中间一行坏了：好的照进，坏的行号报出来，且不自动关窗 */
+  popup.document.getElementById('importText').value = [
+    T('BatchD', 'd@x.com', 'MFRGGZDFMZTWQ2LK'),
+    'otpauth://totp/Broken:x?issuer=Broken',
+    T('BatchE', 'e@x.com', 'NBSWY3DPEB3W64TMMQ'),
+  ].join('\n');
+  popup.document.getElementById('importBtn').click();
+  await tick(400);
+  assert.match(popup.document.getElementById('importResult').textContent, /成功导入 2 条/);
+  const err = popup.document.getElementById('importErr').textContent;
+  assert.match(err, /第 2 行/, '应报出坏行的行号，实际：' + err);
+  assert.equal(popup.document.getElementById('importView').hidden, false, '有失败行时不应自动关闭导入视图');
+  console.log('✓ 批量粘贴：三条一次进库、重复自动跳过、坏行只报自己不拖累整批');
+}
+
 /* ---------------- 扫描当前网页（一次点击，或页面内框选） ---------------- */
 {
   const before = (await call({ type: 'vault.state' }, {})).data.entries.length;

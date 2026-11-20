@@ -161,8 +161,10 @@
       <span></span>
     </header>
     <div class="form">
-      <p class="muted">支持 <code>otpauth://</code> 单条链接、Google Authenticator 导出的 <code>otpauth-migration://</code>，或 JSON 数组。</p>
-      <textarea id="importText" rows="7" placeholder="otpauth://totp/GitHub:me@example.com?secret=..."></textarea>
+      <p class="muted"><b>一次可以粘多条</b>：一行一条 <code>otpauth://</code> 链接就行，重复的会自动跳过。也支持 Google Authenticator 的 <code>otpauth-migration://</code>、JSON 数组，以及「账户 / 密钥」这样的文本块。</p>
+      <textarea id="importText" rows="8" placeholder="otpauth://totp/GitHub:me@example.com?secret=JBSWY3DPEHPK3PXP&amp;issuer=GitHub
+otpauth://totp/Google:me@example.com?secret=KRSXG5CTMVRXEZLU&amp;issuer=Google
+otpauth://totp/AWS:root?secret=GEZDGNBVGY3TQOJQ&amp;issuer=AWS"></textarea>
       <div class="row-actions">
         <span class="spacer"></span>
         <button class="primary" id="importBtn">解析并导入</button>

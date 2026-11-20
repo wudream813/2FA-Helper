@@ -219,10 +219,11 @@
     <!-- ================= 7. 导入 ================= -->
     <section class="card">
       <div class="card-head"><h2>导入 / 恢复</h2></div>
-      <p class="desc">支持 <code>otpauth://</code>、Google Authenticator 导出的 <code>otpauth-migration://</code>、JSON，以及本扩展的备份文件（.json）。</p>
+      <p class="desc">支持 <b>一次粘贴多条</b>（一行一条 <code>otpauth://</code> 链接，重复的自动跳过）、Google Authenticator 导出的 <code>otpauth-migration://</code>、JSON、「账户 / 密钥」文本块，以及本扩展的备份文件（.json）。</p>
 
-      <label class="block-label">粘贴 otpauth 链接 / migration 链接 / JSON
-        <textarea id="importText" rows="4" placeholder="otpauth://totp/GitHub:me@example.com?secret=JBSW..."></textarea>
+      <label class="block-label">粘贴 otpauth 链接（可多行）/ migration 链接 / JSON
+        <textarea id="importText" rows="6" placeholder="otpauth://totp/GitHub:me@example.com?secret=JBSW...
+otpauth://totp/Google:me@example.com?secret=KRSXG5CTMVRXEZLU&amp;issuer=Google"></textarea>
       </label>
       <div class="btn-row">
         <button class="btn" id="importBtn">解析并导入（合并）</button>

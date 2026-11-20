@@ -1,12 +1,12 @@
 {
   "name": "2fa-helper",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Offline TOTP vault browser extension with local snapshots, WebDAV & cloud backups, and login-page autofill.",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node test/run.mjs && node test/providers.mjs && node test/sync.mjs && node test/qr.mjs && node test/qr-load.mjs && node test/s3.mjs",
+    "test": "node test/run.mjs && node test/providers.mjs && node test/sync.mjs && node test/qr.mjs && node test/qr-load.mjs && node test/paste.mjs && node test/s3.mjs",
     "test:ui": "node test/ui.mjs",
     "test:all": "npm test && npm run test:ui"
   },

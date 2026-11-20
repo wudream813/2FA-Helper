@@ -337,6 +337,10 @@ https://ahkfbinhhpfhjdmogafkgfecajfldmal.chromiumapp.org/
 
 > 只截**当前可见区域**，二维码在页面下方就先滚到能看见的位置。截屏需要 `activeTab` 权限，仅在你点 ▣ 时授予。
 
+**手动添加更快的方式：一次粘一批。** 弹窗「批量导入」支持多行 `otpauth://` 链接（一行一条，
+重复的自动跳过，坏掉的行会单独报出来不会拖累其他行）；也认 Google Authenticator 的迁移包、
+「账户 / 密钥」文本块和 JSON。
+
 设置页 →「二维码扫码导入」，另外还有三种入口：
 
 | 方式 | 说明 |

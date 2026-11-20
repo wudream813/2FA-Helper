@@ -77,6 +77,21 @@
     throw new Error('无法识别的二维码内容（需要 otpauth://、迁移包、本扩展条目码或备份文件）');
   }
 
+  /**
+   * 扫码 / 粘贴的统一入口，支持一次多条：
+   *   - 单条 otpauth / 迁移包 / 条目码 / 备份文件 / 同步配对码 → 走 parseScanned
+   *   - 多行 otpauth（链接可以夹在文字里）→ F2A.otpauth.parseBatch
+   *   - 返回里带 failed:[{line, reason}]，坏掉的行不会拖垮整批
+   */
+  function parseScannedMulti(text) {
+    const raw = String(text || '').trim();
+    if (!raw) throw new Error('内容为空');
+    if (/^f2a-sync:/i.test(raw) || /^f2a-passkey:/i.test(raw)) return parseScanned(raw);
+    if (raw.startsWith('{') || raw.startsWith('[')) return parseScanned(raw);
+    const batch = F2A.otpauth.parseBatch(raw);
+    return { action: 'import', kind: 'otp', entries: batch.entries, failed: batch.failed, total: batch.entries.length };
+  }
+
   /* 二维码解码器按需加载：Chromium 的 SW 用 importScripts，Firefox 的
      background.scripts 已在 manifest 里静态引入，这里检测一下即可。 */
   let decoderLoading = null;
@@ -248,7 +263,7 @@
     },
 
     /* ---- 扫码 / 粘贴 统一入口 ---- */
-    'scan.handle': async ({ text }) => parseScanned(String(text || '').trim()),
+    'scan.handle': async ({ text }) => parseScannedMulti(String(text || '')),
 
     /* 解码器自检（排查「二维码解码器未加载」用） */
     'qr.diag': async () => ({
@@ -293,18 +308,6 @@
       if (!result.handled) return { noQr: true };
       return result;
     },
-
-    'entry.parseOtpauth': async ({ uri }) => {
-      const parsed = parseScanned(String(uri || '').trim());
-      if (parsed.action === 'sync-join') throw new Error('这是同步配对码，请到设置页的「端到端同步」中导入');
-      return { ok: true, entries: parsed.entries };
-    },
-
-    /* ---- 扫码 / 粘贴 统一入口 ---- */
-    'scan.handle': async ({ text }) => parseScanned(String(text || '').trim()),
-
-    /* 截取当前标签页，回传 PNG data URL（调用方自己解码） */
-    'qr.capture': async () => ({ dataUrl: await captureVisible() }),
 
     /* ---- Passkey ---- */
     'passkey.generate': async () => {

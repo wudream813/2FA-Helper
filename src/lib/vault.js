@@ -325,10 +325,15 @@
     const s = await requireData();
     const data = s.data || emptyData();
     const incoming = entries.map(normalizeEntry);
-    const list = mode === 'replace' ? incoming : (data.entries || []).concat(incoming);
-    data.entries = dedupe(list).sort((a, b) => (a.issuer + a.account).localeCompare(b.issuer + b.account, 'zh-Hans-CN'));
+    // 注意：s.data 和 data 是同一个对象，必须在改动前把「原有条数」抄下来，
+    // 否则算出来的 added 永远是 0（去重后的增量会被自己抵消）。
+    const base = mode === 'replace' ? [] : (data.entries || []).slice();
+    const before = base.length;
+    data.entries = dedupe(base.concat(incoming))
+      .sort((a, b) => (a.issuer + a.account).localeCompare(b.issuer + b.account, 'zh-Hans-CN'));
     await saveData(data);
-    return { added: data.entries.length - (mode === 'replace' ? 0 : (s.data.entries || []).length), total: data.entries.length };
+    const skipped = incoming.length - (data.entries.length - before);
+    return { added: data.entries.length - before, skipped: Math.max(0, skipped), total: data.entries.length };
   }
 
   /* ---------------- encryption lifecycle ---------------- */

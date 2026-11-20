@@ -385,5 +385,16 @@ await test('dropbox path normalisation', () => {
 });
 
 /* ---------------- summary ---------------- */
+console.log('\n源码卫生');
+await test('background.js 里没有重复注册的消息路由', () => {
+  const src = readFileSync(path.join(ROOT, 'src/background.js'), 'utf8');
+  const keys = [...src.matchAll(/^ {4}'([\w.]+)':\s/gm)].map((m) => m[1]);
+  const seen = new Set();
+  const dup = [];
+  for (const k of keys) { if (seen.has(k)) dup.push(k); else seen.add(k); }
+  assert.equal(dup.length, 0, '重复的路由会被后一个静默覆盖：' + dup.join(', '));
+  assert.ok(keys.length > 30, '路由数量看起来不对：' + keys.length);
+});
+
 console.log(`\n${failures.length ? '✗' : '✓'} ${passed} passed, ${failures.length} failed\n`);
 if (failures.length) process.exit(1);

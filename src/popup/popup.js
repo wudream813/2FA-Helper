@@ -729,10 +729,27 @@
         $('importErr').textContent = '这是同步配对码，请到设置页「端到端同步」中导入';
         return;
       }
+      if (parsed.action === 'restore') {
+        $('importErr').textContent = '这是加密备份文件，请到设置页「导入 / 恢复」里恢复';
+        return;
+      }
       const res = await send('entry.import', { entries: parsed.entries, mode: 'merge' });
-      $('importResult').textContent = `成功导入 ${parsed.entries.length} 条，当前共 ${res.total} 条。`;
-      await reload();
-      setTimeout(() => { show('mainView'); }, 900);
+      const added = res.added == null ? parsed.entries.length : res.added;
+      const dup = res.skipped == null ? parsed.entries.length - added : res.skipped;
+      const bits = [`成功导入 ${added} 条`];
+      if (dup > 0) bits.push(`跳过 ${dup} 条重复`);
+      bits.push(`当前共 ${res.total} 条`);
+      $('importResult').textContent = bits.join('，') + '。';
+      const failed = parsed.failed || [];
+      if (failed.length) {
+        // 有失败行时别自动关窗，让人能看清哪一行坏了
+        $('importErr').textContent = `${failed.length} 行没导入：`
+          + failed.slice(0, 4).map((f) => `第 ${f.line} 行（${f.reason}）`).join('；')
+          + (failed.length > 4 ? ' 等' : '');
+      }
+      await reload();                    // reload() 会把视图切回主界面
+      if (failed.length) show('importView');  // 有失败行就留在导入界面，让人看清哪行坏了
+      else setTimeout(() => { show('mainView'); }, 900);
     } catch (e) {
       $('importErr').textContent = e.message;
     }
@@ -753,7 +770,7 @@
   // pasting an otpauth / migration / entry QR payload jumps straight to import
   document.addEventListener('paste', (ev) => {
     const text = (ev.clipboardData || window.clipboardData).getData('text');
-    if (/^(otpauth(-migration)?:\/\/|f2a-passkey:)/.test((text || '').trim())) {
+    if (/otpauth(-migration)?:\/\/|^f2a-passkey:/.test(text || '')) {
       $('importText').value = text.trim();
       show('importView');
       $('importBtn').click();

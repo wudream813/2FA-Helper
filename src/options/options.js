@@ -597,11 +597,23 @@
     const text = $('importText').value.trim();
     if (!text) return;
     try {
-      const parsed = await send('entry.parseOtpauth', { uri: text });
+      const parsed = await send('scan.handle', { text });
+      if (parsed.action === 'sync-join') throw new Error('这是同步配对码，请到「端到端同步」里加入');
+      if (parsed.action === 'restore') throw new Error('这是加密备份文件，请用下面的「从文件恢复」');
       const res = await send('entry.import', { entries: parsed.entries, mode: 'merge' });
-      $('importResult').textContent = `导入 ${parsed.entries.length} 条，当前共 ${res.total} 条`;
+      const added = res.added == null ? parsed.entries.length : res.added;
+      const dup = res.skipped == null ? parsed.entries.length - added : res.skipped;
+      const bits = [`导入 ${added} 条`];
+      if (dup > 0) bits.push(`跳过 ${dup} 条重复`);
+      bits.push(`当前共 ${res.total} 条`);
+      $('importResult').textContent = bits.join('，');
       $('importText').value = '';
-      toast('导入完成');
+      const failed = parsed.failed || [];
+      if (failed.length) {
+        $('importErr').textContent = `${failed.length} 行没导入：`
+          + failed.slice(0, 6).map((f) => `第 ${f.line} 行（${f.reason}）`).join('；');
+      }
+      toast(failed.length ? `导入 ${added} 条，${failed.length} 行失败` : '导入完成');
       refreshStatus();
     } catch (e) {
       $('importErr').textContent = e.message;

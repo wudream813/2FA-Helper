@@ -223,8 +223,93 @@
     }).filter((it) => (it.kind === 'passkey' ? !!(it.passkey && it.passkey.rpId) : !!it.secret));
   }
 
+
+  /* ---------- batch paste: 一次粘多条 ---------- */
+  /** 从任意文本里挑出所有 otpauth / otpauth-migration 链接（含行号）。 */
+  function collectUris(text) {
+    const raw = String(text || '');
+    const out = [];
+    // 只吃 RFC 3986 允许的 ASCII 字符：中文说明文字、书名号、逗号都会让链接自然断掉
+    const re = /otpauth(?:-migration)?:\/\/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+/gi;
+    let m;
+    while ((m = re.exec(raw))) {
+      // 抓到句末标点时去掉尾巴，例如 "…secret=ABC，还有"
+      const url = m[0].replace(/[)\]}>.,;:!?'"]+$/, '');
+      const line = raw.slice(0, m.index).split(/\r?\n/).length;
+      out.push({ uri: url, line, index: m.index });
+    }
+    return out;
+  }
+
+  /** Google / 微软那种「账户 / 密钥」文本块：密钥行往回找 3 行内的账户名与发行方。 */
+  function collectSecretBlocks(text) {
+    const raw = String(text || '');
+    const lines = raw.split(/\r?\n/);
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (/otpauth/i.test(lines[i])) continue; // 已由链接解析处理
+      const m = /(?:密钥|秘钥|secret(?:\s*key)?|key)\s*[:：=]\s*(.+)$/i.exec(lines[i]);
+      if (!m) continue;
+      const secret = m[1].replace(/[\s-]+/g, '').toUpperCase();
+      if (!/^[A-Z2-7]{12,}={0,6}$/.test(secret)) continue;
+      let account = '';
+      let issuer = '';
+      for (let j = i; j >= Math.max(0, i - 3); j--) {
+        const a = /(?:账户|账号|account|用户名|username)\s*[:：=]\s*(.+)$/i.exec(lines[j]);
+        const b = /(?:发行方|签发者|issuer|服务|service|网站|名称)\s*[:：=]\s*(.+)$/i.exec(lines[j]);
+        if (a && !account) account = a[1].trim();
+        if (b && !issuer) issuer = b[1].trim();
+      }
+      if (!account && !issuer) continue; // 光有密钥、没有任何标识，容易是误判
+      out.push({
+        line: i + 1,
+        entry: {
+          kind: 'otp', type: 'totp',
+          issuer, account: account || issuer, secret,
+          digits: 6, period: 30, algorithm: 'SHA1', counter: 0,
+        },
+      });
+    }
+    return out;
+  }
+
+  /**
+   * 批量解析：多行 otpauth 链接、混在文字里的链接、migration 包、密钥文本块。
+   * 返回 { entries, failed }；失败项带行号与原因，绝不因为一行坏了就整批丢掉。
+   */
+  function parseBatch(text) {
+    const raw = String(text || '');
+    if (!raw.trim()) throw new Error('内容为空');
+    const entries = [];
+    const failed = [];
+    const seenUri = new Set();
+
+    for (const hit of collectUris(raw)) {
+      if (seenUri.has(hit.uri)) continue; // 同一行重复粘贴
+      seenUri.add(hit.uri);
+      try {
+        if (/^otpauth-migration:/i.test(hit.uri)) {
+          entries.push(...parseMigration(hit.uri));
+        } else {
+          entries.push(parseOtpauth(hit.uri));
+        }
+      } catch (e) {
+        failed.push({ line: hit.line, reason: e.message, text: hit.uri.slice(0, 80) });
+      }
+    }
+    for (const block of collectSecretBlocks(raw)) entries.push(block.entry);
+
+    if (!entries.length) {
+      if (!failed.length) throw new Error('没找到 otpauth:// 链接，也没有「密钥: XXXX」这样的内容');
+      throw new Error(failed.length === 1
+        ? failed[0].reason
+        : `${failed.length} 条都无法识别：` + failed.slice(0, 3).map((f) => `第 ${f.line} 行 ${f.reason}`).join('；'));
+    }
+    return { entries, failed };
+  }
+
   Object.assign(F2A, {
     totp: { generate, hotp, normalizeAlgo },
-    otpauth: { parse: parseOtpauth, toUri: toOtpauth, parseMigration, importFromJson },
+    otpauth: { parse: parseOtpauth, toUri: toOtpauth, parseMigration, importFromJson, parseBatch },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);
